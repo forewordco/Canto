@@ -135,7 +135,7 @@ export function AuthScreen() {
               letterSpacing: "-0.01em",
             }}
           >
-            FlowOS
+            Canto
           </h1>
           <p
             className="mt-1"
@@ -502,7 +502,7 @@ export function AuthScreen() {
             fontSize: "12px",
           }}
         >
-          By continuing, you agree to FlowOS Terms of Service
+          By continuing, you agree to Canto Terms of Service
         </p>
       </div>
     </div>

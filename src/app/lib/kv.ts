@@ -75,6 +75,12 @@ export async function kvMdel(keys: string[]): Promise<boolean> {
   return !error;
 }
 
+/** Set multiple key-value pairs */
+export async function kvMset(entries: { key: string; value: unknown }[]): Promise<boolean> {
+  const { error } = await api.post("/kv/mset", { entries });
+  return !error;
+}
+
 /** Get all values matching a key prefix */
 export async function kvGetByPrefix<T = unknown>(prefix: string): Promise<Record<string, T>> {
   const { data, error } = await api.get<Record<string, T>>(

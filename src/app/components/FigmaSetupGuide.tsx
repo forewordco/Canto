@@ -152,7 +152,7 @@ export function FigmaSetupGuide() {
         </div>
         <h1 style={{ color: c.text1, fontSize: "28px", fontWeight: 700, lineHeight: 1.2 }}>Figma Setup Guide</h1>
         <p className="mt-2 max-w-2xl" style={{ color: c.text3, fontSize: "14px", lineHeight: 1.6 }}>
-          Step-by-step instructions to recreate the FlowOS design system as Figma local variables, text styles, and color styles — ready for your team to use as a shared library.
+          Step-by-step instructions to recreate the Canto design system as Figma local variables, text styles, and color styles — ready for your team to use as a shared library.
         </p>
       </div>
 
@@ -185,7 +185,7 @@ export function FigmaSetupGuide() {
         {/* STEP 1: File Setup */}
         <Step number={1} title="Create Your Library File" icon={FolderOpen} defaultOpen>
           <Substep label="Create a new Figma file">
-            <p>Name it <strong>"FlowOS — Design System"</strong> (or your preferred name). This file will become your published library.</p>
+            <p>Name it <strong>"Canto — Design System"</strong> (or your preferred name). This file will become your published library.</p>
           </Substep>
           <Substep label="Create pages for each token category">
             <p>Add pages named: <strong>Colors</strong>, <strong>Typography</strong>, <strong>Spacing</strong>, <strong>Effects</strong>, <strong>Components</strong>, and <strong>Cover</strong>.</p>
@@ -201,7 +201,7 @@ export function FigmaSetupGuide() {
         {/* STEP 2: Color Variables */}
         <Step number={2} title="Set Up Color Variables" icon={Palette}>
           <Substep label="Open the Variables panel">
-            <p>Go to the right sidebar → <strong>Local variables</strong> (or press the grid icon). Create a new <strong>Collection</strong> called <InlineCode>FlowOS / Colors</InlineCode>.</p>
+            <p>Go to the right sidebar → <strong>Local variables</strong> (or press the grid icon). Create a new <strong>Collection</strong> called <InlineCode>Canto / Colors</InlineCode>.</p>
           </Substep>
           <Substep label="Create color groups">
             <p>For each of the 12 color scales (Coral, Rose, Orange, Gold, Lime, Emerald, Teal, Cyan, Indigo, Lavender, Magenta, Neutral), create a group by naming variables with a slash separator. For example:</p>
@@ -222,7 +222,7 @@ export function FigmaSetupGuide() {
             </div>
           </Substep>
           <Substep label="Add semantic aliases">
-            <p>Create a second collection called <InlineCode>FlowOS / Semantic</InlineCode>. Add variables that <strong>alias</strong> your color primitives:</p>
+            <p>Create a second collection called <InlineCode>Canto / Semantic</InlineCode>. Add variables that <strong>alias</strong> your color primitives:</p>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {[
                 { name: "primary", ref: "coral/400" },
@@ -293,7 +293,7 @@ export function FigmaSetupGuide() {
             </div>
           </Substep>
           <Substep label="Name using slash convention">
-            <p>Name your styles with slash grouping for a clean hierarchy: <InlineCode>FlowOS / Display</InlineCode>, <InlineCode>FlowOS / H1</InlineCode>, <InlineCode>FlowOS / Body</InlineCode>, etc.</p>
+            <p>Name your styles with slash grouping for a clean hierarchy: <InlineCode>Canto / Display</InlineCode>, <InlineCode>Canto / H1</InlineCode>, <InlineCode>Canto / Body</InlineCode>, etc.</p>
           </Substep>
           <Callout type="warning">
             Figma letter-spacing uses pixels, not em. To convert: multiply the em value by the font size. For example, Display tracking of -0.02em at 48px = <strong>-0.96px</strong>.
@@ -303,7 +303,7 @@ export function FigmaSetupGuide() {
         {/* STEP 4: Spacing */}
         <Step number={4} title="Create Spacing Variables" icon={GridNine}>
           <Substep label="Create a spacing collection">
-            <p>Create a new variable collection called <InlineCode>FlowOS / Spacing</InlineCode>. Set the type to <strong>Number</strong>.</p>
+            <p>Create a new variable collection called <InlineCode>Canto / Spacing</InlineCode>. Set the type to <strong>Number</strong>.</p>
           </Substep>
           <Substep label="Add 4px grid values">
             <p>Create variables for each spacing step:</p>
@@ -331,7 +331,7 @@ export function FigmaSetupGuide() {
             </div>
           </Substep>
           <Substep label="Add radius variables">
-            <p>In the same collection (or a new one called <InlineCode>FlowOS / Radius</InlineCode>), add border radius values:</p>
+            <p>In the same collection (or a new one called <InlineCode>Canto / Radius</InlineCode>), add border radius values:</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {[
                 { name: "none", value: "0" },
@@ -390,10 +390,10 @@ export function FigmaSetupGuide() {
             <p>Before publishing, verify you have all variables, text styles, and effect styles. Go to <strong>Assets</strong> panel → your library to see a summary.</p>
           </Substep>
           <Substep label="Publish the library">
-            <p>Click the <strong>Assets</strong> panel → book icon → <strong>"Publish Library"</strong>. Write a clear version note like "v1.0 — Initial FlowOS design tokens".</p>
+            <p>Click the <strong>Assets</strong> panel → book icon → <strong>"Publish Library"</strong>. Write a clear version note like "v1.0 — Initial Canto design tokens".</p>
           </Substep>
           <Substep label="Enable for your team">
-            <p>Team members can enable the library from any file: <strong>Assets → Team Library → Toggle on "FlowOS — Design System"</strong>. All tokens are now available in the variable picker and style menus.</p>
+            <p>Team members can enable the library from any file: <strong>Assets → Team Library → Toggle on "Canto — Design System"</strong>. All tokens are now available in the variable picker and style menus.</p>
           </Substep>
           <Callout type="info">
             When you update tokens and republish, team members will see a notification to accept updates. Variable aliases ensure changes cascade automatically.

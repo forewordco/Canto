@@ -1,7 +1,7 @@
 
-  # Create brand guide for app
+  # Canto
 
-  This is a code bundle for Create brand guide for app. The original project is available at https://www.figma.com/design/AHi7HfyHUXDX0E6p3CKVm1/Create-brand-guide-for-app.
+  This is a code bundle for Canto. The original project is available at https://www.figma.com/design/AHi7HfyHUXDX0E6p3CKVm1/Canto.
 
   ## Running the code
 

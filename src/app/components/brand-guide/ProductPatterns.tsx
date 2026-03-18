@@ -1,0 +1,1 @@
+export { ProductPatterns } from "../ProductPatterns";

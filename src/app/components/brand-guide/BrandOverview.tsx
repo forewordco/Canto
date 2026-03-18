@@ -15,7 +15,7 @@ export function BrandOverview() {
           </p>
         </div>
         <h1 style={{ color: "oklch(0.2 0.02 260)", fontSize: "36px", fontWeight: 700, lineHeight: 1.2 }}>
-          FlowOS Brand Guide
+          Canto Brand Guide
         </h1>
         <p className="mt-3 max-w-2xl" style={{ color: "oklch(0.5 0.02 260)", fontSize: "17px", lineHeight: 1.7 }}>
           A comprehensive guide to our visual identity, design system, and brand elements.
@@ -43,7 +43,7 @@ export function BrandOverview() {
               >
                 <Sparkle className="w-6 h-6 text-white" />
               </div>
-              <span style={{ color: "oklch(0.2 0.02 260)", fontSize: "22px", fontWeight: 700 }}>FlowOS</span>
+              <span style={{ color: "oklch(0.2 0.02 260)", fontSize: "22px", fontWeight: 700 }}>Canto</span>
             </div>
             <span className="px-3 py-1 rounded-full" style={{ background: "oklch(0.95 0.01 260)", color: "oklch(0.5 0.02 260)", fontSize: "12px", fontWeight: 500 }}>
               Primary
@@ -59,7 +59,7 @@ export function BrandOverview() {
               >
                 <Sparkle className="w-6 h-6 text-white" />
               </div>
-              <span style={{ color: "oklch(0.95 0 0)", fontSize: "22px", fontWeight: 700 }}>FlowOS</span>
+              <span style={{ color: "oklch(0.95 0 0)", fontSize: "22px", fontWeight: 700 }}>Canto</span>
             </div>
             <span className="px-3 py-1 rounded-full" style={{ background: "oklch(0.3 0.02 260)", color: "oklch(0.7 0 0)", fontSize: "12px", fontWeight: 500 }}>
               Dark Mode
@@ -75,7 +75,7 @@ export function BrandOverview() {
               >
                 <Sparkle className="w-6 h-6 text-white" />
               </div>
-              <span style={{ color: "oklch(0.25 0.02 260)", fontSize: "22px", fontWeight: 700 }}>FlowOS</span>
+              <span style={{ color: "oklch(0.25 0.02 260)", fontSize: "22px", fontWeight: 700 }}>Canto</span>
             </div>
             <span className="px-3 py-1 rounded-full" style={{ background: "oklch(0.95 0.01 260)", color: "oklch(0.5 0.02 260)", fontSize: "12px", fontWeight: 500 }}>
               Monochrome
@@ -195,7 +195,7 @@ export function BrandOverview() {
         <div className="mt-8 p-5 rounded-xl" style={{ background: "oklch(0.97 0.005 260)" }}>
           <p style={{ color: "oklch(0.5 0.02 260)", fontSize: "13px", fontWeight: 500, marginBottom: "6px" }}>Example Copy</p>
           <p style={{ color: "oklch(0.3 0.02 260)", fontSize: "15px", lineHeight: 1.7, fontStyle: "italic" }}>
-            "Your team's best work starts here. FlowOS helps you organize, track, and ship — all in one place."
+            "Your team's best work starts here. Canto helps you organize, track, and ship — all in one place."
           </p>
         </div>
       </section>

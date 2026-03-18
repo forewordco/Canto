@@ -97,7 +97,7 @@ function oklchToHex(L: number, C: number, H: number): string {
 /* ── Generate export strings ──────────────────────────────── */
 
 function generateCSS(): string {
-  let css = `/* FlowOS Design Tokens — CSS Custom Properties */\n/* Generated from FlowOS Brand Guide */\n\n:root {\n  /* ─── Font ─── */\n  --font-sans: 'Albert Sans', sans-serif;\n\n`;
+  let css = `/* Canto Design Tokens — CSS Custom Properties */\n/* Generated from Canto Brand Guide */\n\n:root {\n  /* ─── Font ─── */\n  --font-sans: 'Albert Sans', sans-serif;\n\n`;
 
   css += `  /* ─── Colors ─── */\n`;
   for (const ct of colorTokens) {
@@ -146,7 +146,7 @@ function generateCSS(): string {
 function generateJSON(): string {
   const obj: Record<string, unknown> = {
     $schema: "https://flowos.design/tokens/v1",
-    name: "FlowOS Design Tokens",
+    name: "Canto Design Tokens",
     version: "1.0.0",
     font: { sans: "'Albert Sans', sans-serif" },
     colors: {} as Record<string, Record<string, string>>,
@@ -186,7 +186,7 @@ function generateJSON(): string {
 }
 
 function generateTailwind(): string {
-  let tw = `/* FlowOS — Tailwind v4 theme extension */\n/* Paste into your main CSS file alongside @import "tailwindcss" */\n\n@theme {\n`;
+  let tw = `/* Canto — Tailwind v4 theme extension */\n/* Paste into your main CSS file alongside @import "tailwindcss" */\n\n@theme {\n`;
 
   tw += `  /* ─── Font ─── */\n  --font-sans: 'Albert Sans', sans-serif;\n\n`;
 
@@ -401,7 +401,7 @@ export function DownloadAssets() {
         </div>
         <h1 style={{ color: c.text1, fontSize: "28px", fontWeight: 700, lineHeight: 1.2 }}>Download Assets</h1>
         <p className="mt-2 max-w-2xl" style={{ color: c.text3, fontSize: "14px", lineHeight: 1.6 }}>
-          Export the complete FlowOS design token system in multiple formats. The <strong>Figma Variables</strong> tab outputs hex-converted JSON ready for direct import into Figma.
+          Export the complete Canto design token system in multiple formats. The <strong>Figma Variables</strong> tab outputs hex-converted JSON ready for direct import into Figma.
         </p>
       </div>
 

@@ -360,3 +360,5 @@ function useTimer() {
 
   return { timer: globalTimer, currentElapsed, start, stop, reset };
 }
+
+export { useTimer, formatTime };

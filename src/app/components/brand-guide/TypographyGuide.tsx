@@ -175,7 +175,7 @@ export function TypographyGuide() {
                     lineHeight: 1.2,
                   }}
                 >
-                  FlowOS
+                  Canto
                 </p>
               </div>
               <div className="flex items-center gap-3 md:w-[140px] shrink-0">

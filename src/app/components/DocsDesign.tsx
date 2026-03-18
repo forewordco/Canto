@@ -620,7 +620,7 @@ export function DocsDesign() {
               <h4 style={{ color: c.text1, fontSize: "14px", fontWeight: 600, lineHeight: 1.3 }}>Onboarding Script</h4>
               <div className="mt-2 rounded-md px-2.5 py-2" style={{ background: c.bg1, border: `1px solid ${c.borderSubtle}` }}>
                 <p className="line-clamp-3" style={{ color: c.text3, fontSize: "11px", lineHeight: 1.5 }}>
-                  Welcome to FlowOS — your all-in-one productivity platform. Let's get you set up in just 3 easy steps...
+                  Welcome to Canto — your all-in-one productivity platform. Let's get you set up in just 3 easy steps...
                 </p>
               </div>
             </button>
@@ -630,7 +630,7 @@ export function DocsDesign() {
               <h4 className="px-4 pt-3.5 pb-2" style={{ color: c.text1, fontSize: "14px", fontWeight: 600, lineHeight: 1.3 }}>Design Review</h4>
               <div className="px-3 pb-3">
                 <img
-                  src="https://images.unsplash.com/photo-1759884247160-27b8465544b6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZWFtJTIwY29sbGFib3JhdGlvbiUyMHdoaXRlYm9hcmR8ZW58MXx8fHwxNzcxOTIwMDY5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
+                  src="https://images.unsplash.com/photo-1759884247160-27b8465544b6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0bW91bnRhY24lMjBsYW5kc2NhcGUlMjBlcmlhbHxlbnwxfHx8fDE3NzE4ODE4NTF8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
                   alt="Design Review"
                   className="w-full h-[100px] object-cover rounded-lg"
                 />

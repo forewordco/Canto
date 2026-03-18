@@ -1,3 +1,24 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* ─── cmdk overrides ─── */
+[cmdk-item] {
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+[cmdk-item][data-selected="true"] {
+  background: var(--accent-primary-subtle, oklch(0.95 0.04 25));
+}
+[cmdk-item][data-selected="true"] svg:last-child {
+  opacity: 1;
+}
+[cmdk-group-heading] {
+  user-select: none;
+}
+
+/* ─── Pulse animation for timer ─── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

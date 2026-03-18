@@ -1,7 +1,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ═══════════════════════════════════════════════════════════
-   FLOWOS DESIGN SYSTEM — Full OKLCH Theme
+   CANTO DESIGN SYSTEM — Full OKLCH Theme
    5 hues × 9 steps + warm neutral scale
    Semantic tokens for backgrounds, text, borders, accents
    ═══════════════════════════════════════════════════════════ */
@@ -69,7 +69,7 @@
   --neutral-200: oklch(0.94 0.008 260);
   --neutral-300: oklch(0.92 0.01 260);
   --neutral-400: oklch(0.85 0.01 260);
-  --neutral-500: oklch(0.65 0.015 260);
+  --neutral-500: oklch(0.58 0.015 260);
   --neutral-600: oklch(0.5 0.02 260);
   --neutral-700: oklch(0.4 0.02 260);
   --neutral-800: oklch(0.3 0.02 260);
@@ -78,7 +78,7 @@
 
   /* ─── Semantic: Page & Surface ─── */
   --font-size: 16px;
-  --page-bg: var(--neutral-50);
+  --page-bg: var(--neutral-0);
   --surface-bg: var(--neutral-0);
   --sidebar-bg: oklch(0.985 0.005 260);
   --glass-bg: oklch(1 0 0 / 0.85);
@@ -87,7 +87,7 @@
   --text-primary: var(--neutral-900);
   --text-secondary: oklch(0.35 0.02 260);
   --text-tertiary: var(--neutral-600);
-  --text-quaternary: var(--neutral-500);
+  --text-quaternary: oklch(0.52 0.01 260);
   --text-inverse: var(--neutral-0);
   --text-link: var(--azure-500);
   --text-danger: var(--red-600);
@@ -167,7 +167,7 @@
   --text-primary: oklch(0.95 0.005 260);
   --text-secondary: oklch(0.78 0.01 260);
   --text-tertiary: oklch(0.6 0.01 260);
-  --text-quaternary: oklch(0.48 0.01 260);
+  --text-quaternary: oklch(0.53 0.01 260);
   --text-inverse: oklch(0.145 0.01 260);
   --text-link: oklch(0.72 0.14 250);
   --text-danger: oklch(0.72 0.16 25);
@@ -344,5 +344,32 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+/* ─── Reduced Motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─── Touch Optimization ─── */
+@media (pointer: coarse) {
+  /* Prevent text selection while long-pressing on touch */
+  [data-longpress] {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Disable context menu on elements with custom long-press */
+  .no-context-menu {
+    -webkit-touch-callout: none;
   }
 }

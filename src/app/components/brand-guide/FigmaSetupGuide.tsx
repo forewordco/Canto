@@ -1,0 +1,1 @@
+export { FigmaSetupGuide } from "../FigmaSetupGuide";

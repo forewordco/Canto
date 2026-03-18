@@ -42,7 +42,14 @@ const COLOR_NAMES = [
 export function OnboardingScreen() {
   const { profile, completeOnboarding, user, signOut } = useAuth();
   const [step, setStep] = useState(0);
-  const [displayName, setDisplayName] = useState(profile?.displayName || "");
+  const [firstName, setFirstName] = useState(() => {
+    const parts = (profile?.displayName || "").trim().split(/\s+/);
+    return parts[0] || "";
+  });
+  const [lastName, setLastName] = useState(() => {
+    const parts = (profile?.displayName || "").trim().split(/\s+/);
+    return parts.length > 1 ? parts.slice(1).join(" ") : "";
+  });
   const [role, setRole] = useState(profile?.role || "");
   const [avatarColor, setAvatarColor] = useState(
     profile?.avatarColor || AVATAR_COLORS[0]
@@ -83,7 +90,7 @@ export function OnboardingScreen() {
   }, []);
 
   const canProceed = () => {
-    if (step === 0) return displayName.trim().length >= 2;
+    if (step === 0) return firstName.trim().length >= 1 && lastName.trim().length >= 1;
     return true;
   };
 
@@ -97,7 +104,7 @@ export function OnboardingScreen() {
           weekStart: "monday" as const,
           dateFormat: "mdy" as const,
         }),
-        displayName: displayName.trim(),
+        displayName: `${firstName.trim()} ${lastName.trim()}`.trim(),
         role: role.trim() || undefined,
         avatarColor,
         avatarUrl: avatarUrl || undefined,
@@ -114,7 +121,8 @@ export function OnboardingScreen() {
   }, [
     profile,
     user,
-    displayName,
+    firstName,
+    lastName,
     role,
     avatarColor,
     avatarUrl,
@@ -214,7 +222,7 @@ export function OnboardingScreen() {
                       fontWeight: 700,
                     }}
                   >
-                    Welcome to FlowOS
+                    Welcome to Canto
                   </h2>
                   <p
                     className="mt-1"
@@ -228,50 +236,78 @@ export function OnboardingScreen() {
                   </p>
                 </div>
 
-                <div>
-                  <label
-                    className="flex items-center gap-1.5 mb-1.5"
-                    style={{
-                      color: "oklch(0.35 0.02 260)",
-                      fontSize: "13px",
-                      fontWeight: 500,
-                    }}
-                  >
-                    <User className="w-3.5 h-3.5" />
-                    Display Name
-                    <span style={{ color: "oklch(0.7 0.18 25)" }}>*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="How your team sees you"
-                    maxLength={50}
-                    autoFocus
-                    className="w-full rounded-[6px] border px-3.5 py-2.5 outline-none transition-all"
-                    style={{
-                      borderColor: "oklch(0.92 0.01 260)",
-                      fontSize: "14px",
-                      color: "oklch(0.2 0.02 260)",
-                      background: "oklch(0.985 0.003 260)",
-                    }}
-                    onFocus={(e) =>
-                      (e.target.style.borderColor =
-                        "oklch(0.7 0.18 25 / 0.5)")
-                    }
-                    onBlur={(e) =>
-                      (e.target.style.borderColor = "oklch(0.92 0.01 260)")
-                    }
-                  />
-                  <p
-                    className="mt-1"
-                    style={{
-                      color: "oklch(0.6 0.02 260)",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {displayName.length}/50
-                  </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label
+                      className="flex items-center gap-1.5 mb-1.5"
+                      style={{
+                        color: "oklch(0.35 0.02 260)",
+                        fontSize: "13px",
+                        fontWeight: 500,
+                      }}
+                    >
+                      <User className="w-3.5 h-3.5" />
+                      First Name
+                      <span style={{ color: "oklch(0.7 0.18 25)" }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Jane"
+                      maxLength={30}
+                      autoFocus
+                      className="w-full rounded-[6px] border px-3.5 py-2.5 outline-none transition-all"
+                      style={{
+                        borderColor: "oklch(0.92 0.01 260)",
+                        fontSize: "14px",
+                        color: "oklch(0.2 0.02 260)",
+                        background: "oklch(0.985 0.003 260)",
+                      }}
+                      onFocus={(e) =>
+                        (e.target.style.borderColor =
+                          "oklch(0.7 0.18 25 / 0.5)")
+                      }
+                      onBlur={(e) =>
+                        (e.target.style.borderColor = "oklch(0.92 0.01 260)")
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      className="flex items-center gap-1.5 mb-1.5"
+                      style={{
+                        color: "oklch(0.35 0.02 260)",
+                        fontSize: "13px",
+                        fontWeight: 500,
+                      }}
+                    >
+                      Last Name
+                      <span style={{ color: "oklch(0.7 0.18 25)" }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Doe"
+                      maxLength={30}
+                      className="w-full rounded-[6px] border px-3.5 py-2.5 outline-none transition-all"
+                      style={{
+                        borderColor: "oklch(0.92 0.01 260)",
+                        fontSize: "14px",
+                        color: "oklch(0.2 0.02 260)",
+                        background: "oklch(0.985 0.003 260)",
+                      }}
+                      onFocus={(e) =>
+                        (e.target.style.borderColor =
+                          "oklch(0.7 0.18 25 / 0.5)")
+                      }
+                      onBlur={(e) =>
+                        (e.target.style.borderColor = "oklch(0.92 0.01 260)")
+                      }
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -350,7 +386,7 @@ export function OnboardingScreen() {
                     <div
                       className="w-20 h-20 rounded-full flex items-center justify-center overflow-hidden"
                       style={{
-                        background: avatarUrl ? undefined : avatarColor,
+                        background: avatarColor,
                       }}
                     >
                       {avatarUrl ? (
@@ -368,7 +404,7 @@ export function OnboardingScreen() {
                             textShadow: "0 1px 2px oklch(0 0 0 / 0.15)",
                           }}
                         >
-                          {getInitials(displayName)}
+                          {getInitials(`${firstName.trim()} ${lastName.trim()}`)}
                         </span>
                       )}
                     </div>
@@ -388,6 +424,7 @@ export function OnboardingScreen() {
                       ref={fileInputRef}
                       type="file"
                       accept="image/*"
+                      capture="user"
                       className="hidden"
                       onChange={handleFileSelect}
                     />
@@ -401,7 +438,7 @@ export function OnboardingScreen() {
                         fontWeight: 600,
                       }}
                     >
-                      {displayName || "Your Name"}
+                      {`${firstName.trim()} ${lastName.trim()}`.trim() || "Your Name"}
                     </p>
                     {role && (
                       <p
@@ -485,7 +522,7 @@ export function OnboardingScreen() {
                   <div
                     className="w-24 h-24 rounded-full flex items-center justify-center overflow-hidden shadow-lg"
                     style={{
-                      background: avatarUrl ? undefined : avatarColor,
+                      background: avatarColor,
                       boxShadow: `0 4px 16px oklch(0 0 0 / 0.1), 0 0 0 3px white`,
                     }}
                   >
@@ -504,7 +541,7 @@ export function OnboardingScreen() {
                           textShadow: "0 1px 3px oklch(0 0 0 / 0.15)",
                         }}
                       >
-                        {getInitials(displayName)}
+                        {getInitials(`${firstName.trim()} ${lastName.trim()}`)}
                       </span>
                     )}
                   </div>
@@ -518,7 +555,7 @@ export function OnboardingScreen() {
                       fontWeight: 700,
                     }}
                   >
-                    You're all set, {displayName.split(" ")[0]}!
+                    You're all set, {firstName.split(" ")[0]}!
                   </h2>
                   <p
                     className="mt-2 mx-auto max-w-sm"

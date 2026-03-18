@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
    DATA MODEL — All TypeScript interfaces and constants
-   for the FlowOS project management application.
+   for the Canto project management application.
    ═══════════════════════════════════════════════════════════ */
 
 /* ─── Constants ─── */
@@ -76,7 +76,29 @@ export type DocBlockType =
   | "quote"
   | "code"
   | "divider"
-  | "image";
+  | "image"
+  | "callout"
+  | "toggle"
+  | "embed"
+  | "table"
+  | "gallery"
+  | "unsplash-image"
+  | "group-card"
+  /* Script-specific */
+  | "scene-heading"
+  | "action"
+  | "character"
+  | "dialogue"
+  | "parenthetical"
+  | "transition";
+
+export interface UnsplashImageMeta {
+  id: string;
+  url: string;
+  thumbUrl: string;
+  photographer: string;
+  photographerUrl: string;
+}
 
 export interface DocBlock {
   id: string;
@@ -92,6 +114,34 @@ export interface DocBlock {
   imageAlt?: string;
   /** Nested children blocks (for lists) */
   children?: DocBlock[];
+  /** Callout block accent color */
+  calloutColor?: string;
+  /** Callout block icon name */
+  calloutIcon?: string;
+  /** Code block language */
+  language?: string;
+  /** Toggle block collapsed state */
+  collapsed?: boolean;
+  /** Embed block type */
+  embedType?: "youtube" | "video" | "photo";
+  /** Embed block URL */
+  embedUrl?: string;
+  /** Table block data */
+  tableData?: { headers: string[]; rows: string[][] };
+  /** Gallery images (Unsplash) */
+  galleryImages?: UnsplashImageMeta[];
+  /** Single Unsplash image metadata */
+  unsplashMeta?: UnsplashImageMeta;
+  /** Group card: linked doc ID */
+  linkedDocId?: string;
+  /** Group card: visual style */
+  cardStyle?: "compact" | "list" | "preview" | "gallery" | "board";
+  /** Block decoration */
+  decoration?: "focus" | "block";
+  /** Override text/accent color */
+  color?: string;
+  /** Font family override */
+  fontStyle?: "system" | "serif" | "mono" | "round";
 }
 
 /* ─── Recurrence ─── */
@@ -119,7 +169,7 @@ export interface Attachment {
 export interface ProjectAttachment {
   id: string;
   name: string;
-  url: string;
+  url?: string;
   type: "image" | "video" | "link" | "document" | "gallery" | "travel";
   storageKey?: string;
   thumbnailUrl?: string;
@@ -128,16 +178,17 @@ export interface ProjectAttachment {
   images?: { url: string; caption?: string }[];
   /** For travel type */
   travelItems?: TravelItem[];
+  /** For linked workspace docs */
+  linkedProjectName?: string;
 }
 
 export interface TravelItem {
   id: string;
-  category: string; // "flight", "hotel", "transport", "meals", "equipment", etc.
-  description: string;
-  amount: number;
-  currency?: string;
-  date?: string;
-  notes?: string;
+  category: "flight" | "stay" | "car_rental" | "gear" | "food" | "parking";
+  title: string;
+  details: string;
+  link?: string;
+  cost: number;
 }
 
 /* ─── Comments ─── */
@@ -225,6 +276,7 @@ export interface TaskItem {
   tags?: string[];
   blockedBy?: string[]; // task IDs
   blocking?: string[]; // task IDs
+  likedBy?: string[]; // user IDs who liked
   createdAt?: string; // ISO timestamp
   updatedAt?: string; // ISO timestamp
   recurrence?: Recurrence;
@@ -253,6 +305,23 @@ export interface UpdateItem {
   status?: ProjectStatus;
   sections?: { label: string; content: string }[];
   reactions?: { emoji: string; userIds: string[] }[];
+  /** Structured content — Markdown */
+  summary?: string;
+  nextSteps?: string;
+  customSections?: { title: string; content: string }[];
+  /** Metadata */
+  owner?: string;
+  ownerName?: string;
+  attendees?: string[];
+  attachments?: Attachment[];
+  comments?: Comment[];
+  /** Type discriminator */
+  type?: "status-update" | "member-joined" | "project-created";
+  eventMembers?: string[];
+  /** Snapshot of project metadata at time of update */
+  productionPhase?: ProductionPhase;
+  projectType?: ProjectType;
+  client?: string;
 }
 
 /* ─── Timeline ─── */
@@ -271,11 +340,63 @@ export interface TagDef {
   color: string;
 }
 
+/* ─── Spaces ─── */
+
+export type SpacePersonRole = "member" | "client" | "viewer";
+export type SpaceMemberRole = "super-admin" | "admin" | "member";
+
+export interface SpacePerson {
+  id: string;
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+  avatarColor?: string;
+  /** Internal role within the space (only for members list) */
+  memberRole?: SpaceMemberRole;
+  /** The auth user ID this person is linked to (for permission checks) */
+  userId?: string;
+  /** Invitation status: set when an email invite was sent */
+  inviteStatus?: "pending" | "sent" | "accepted";
+  /** ISO timestamp of when the invite was sent */
+  invitedAt?: string;
+}
+
+export interface SpaceTeam {
+  id: string;
+  name: string;
+  color: string;
+  phosphorIcon?: string;
+  description?: string;
+  /** Person IDs from the space's members/clients/viewers */
+  personIds: string[];
+  createdAt: string;
+}
+
+export interface Space {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;           // emoji
+  iconUrl?: string;       // custom uploaded icon
+  phosphorIcon?: string;  // Phosphor icon name
+  description?: string;
+  order: number;
+  visible: boolean;
+  createdAt: string;
+  /** Auth user ID of the space creator (always super-admin) */
+  creatorId?: string;
+  members?: SpacePerson[];
+  clients?: SpacePerson[];
+  viewers?: SpacePerson[];
+  teams?: SpaceTeam[];
+}
+
 /* ─── Projects ─── */
 
 export interface ProjectData {
   name: string;
   shortName?: string;
+  abbreviation?: string;
   description: string;
   tasks: TaskItem[];
   notes: TaskItem[];
@@ -290,6 +411,7 @@ export interface ProjectData {
   color: string;
   icon: string; // emoji
   iconUrl?: string; // custom upload
+  phosphorIcon?: string; // Phosphor icon name (e.g. "Camera", "VideoCamera")
   projectAttachments: ProjectAttachment[];
   productionPhase: ProductionPhase;
   projectType: ProjectType;
@@ -297,6 +419,7 @@ export interface ProjectData {
   members?: string[]; // userIds
   archived?: boolean;
   tagPalette?: TagDef[];
+  spaceId?: string;
 }
 
 /* ─── Clients ─── */
@@ -399,7 +522,7 @@ export interface ProfileData {
   lastInProgressTask?: string;
 }
 
-/* ─── Notifications ─── */
+/* ─── Notifications ── */
 
 export interface NotificationItem {
   id: string;
@@ -460,6 +583,39 @@ export interface WorkspaceDoc {
   /** Import source */
   importSource?: "craft" | "asana";
   importSourceId?: string;
+  /** Today/Lineup flags for Home page integration */
+  today?: boolean;
+  lineup?: boolean;
+  /** Cover image */
+  coverImage?: string;
+  coverImageY?: number;
+  /** Organization flags */
+  pinned?: boolean;
+  private?: boolean;
+  /** Custom icon name */
+  icon?: string;
+  /** Owner user ID */
+  owner?: string;
+  /** Manual sort order */
+  sortOrder?: number;
+  /** Google Calendar integration */
+  gcalLink?: string;
+  gcalMeetLink?: string;
+  gcalEventTime?: string;
+  /** Cross-references */
+  linkedProjectId?: string;
+  linkedClientId?: string;
+  linkedTaskId?: string;
+  /** Meeting-specific */
+  meetingStatus?: "on-track" | "at-risk" | "off-track" | "on-hold" | "complete" | "dropped";
+  /** Script-specific */
+  characters?: string[];
+  locations?: string[];
+  scriptByline?: string;
+  /** Parent doc reference for nested docs */
+  parentDocId?: string;
+  /** Space assignment */
+  spaceId?: string;
 }
 
 export interface DocFolder {
@@ -467,6 +623,8 @@ export interface DocFolder {
   name: string;
   parentId?: string;
   order?: number;
+  /** Folder accent color */
+  color?: string;
 }
 
 /* ─── Production Phase Metadata ─── */

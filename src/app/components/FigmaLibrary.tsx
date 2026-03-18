@@ -198,9 +198,9 @@ function oklchToHex(L: number, C: number, H: number): string {
 function generateFigmaLibraryJSON(): string {
   const lib: Record<string, unknown> = {
     _meta: {
-      name: "FlowOS Design System",
+      name: "Canto Design System",
       version: "1.0.0",
-      description: "Complete Figma-ready design tokens and component specifications for FlowOS",
+      description: "Complete Figma-ready design tokens and component specifications for Canto",
       fontFamily: "Albert Sans",
       generatedAt: new Date().toISOString(),
       format: "W3C DTCG (Design Tokens Community Group)",
@@ -351,7 +351,7 @@ function generateTokensStudioJSON(): string {
     global[`shadow-${sh.name}`] = { $value: sh.value, $type: "boxShadow" };
   }
 
-  root["FlowOS"] = global;
+  root["Canto"] = global;
   return JSON.stringify(root, null, 2);
 }
 
@@ -536,7 +536,7 @@ export function FigmaLibrary() {
         </div>
         <h1 style={{ color: c.text1, fontSize: "28px", fontWeight: 700, lineHeight: 1.2 }}>Downloadable Figma Library</h1>
         <p className="mt-2 max-w-2xl" style={{ color: c.text3, fontSize: "14px", lineHeight: 1.6 }}>
-          Export the complete FlowOS design system as Figma-ready token files. Import into Figma using Tokens Studio, the Variables API, or any token plugin to auto-generate your styles, variables, and component foundations.
+          Export the complete Canto design system as Figma-ready token files. Import into Figma using Tokens Studio, the Variables API, or any token plugin to auto-generate your styles, variables, and component foundations.
         </p>
       </div>
 
