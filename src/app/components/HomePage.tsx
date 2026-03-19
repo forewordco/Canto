@@ -30,7 +30,6 @@ import {
   SlidersHorizontal,
   Gear,
   Queue,
-  Circle,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
 import { useData, useTodayTasks, useLineupTasks, useUpcomingTasks, useOverdueTasks, useAllTasks, useTodayDocs, useLineupDocs } from "../lib/data";
@@ -41,6 +40,7 @@ import type { WorkspaceDoc, DocType } from "../lib/types";
 import { HOME_GRADIENTS, PERSONAL_PROJECT, displayProjectName } from "../lib/types";
 import { useNavigation } from "../lib/navigation";
 import { useGlobalTaskDetail } from "./GlobalTaskDetail";
+import { TaskRow } from "./TaskRow";
 
 /* ─── Time-based greeting ─── */
 
@@ -761,134 +761,6 @@ function formatShortDate(dateStr: string): string {
   }
 }
 
-function HomeTaskRow({
-  task,
-  projectName,
-  projectColor,
-  showProject = false,
-  isToday = false,
-  isLineup = false,
-  onToggleComplete,
-  onToggleToday,
-  onToggleLineup,
-  onClickTask,
-}: {
-  task: TaskItem & { projectName?: string };
-  projectName?: string;
-  projectColor?: string;
-  showProject?: boolean;
-  isToday?: boolean;
-  isLineup?: boolean;
-  onToggleComplete?: (taskId: string) => void;
-  onToggleToday?: (taskId: string) => void;
-  onToggleLineup?: (taskId: string) => void;
-  onClickTask?: (task: TaskItem & { projectName?: string }) => void;
-}) {
-  const isCompleted = task.status === "completed" || task.completed;
-  const pName = task.projectName || projectName;
-
-  return (
-    <div
-      className="group/hrow flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-black/[0.015] dark:hover:bg-white/[0.015] cursor-pointer"
-      style={{
-        opacity: isCompleted ? 0.5 : 1,
-      }}
-      onClick={() => onClickTask?.(task)}
-    >
-      {/* Circle checkbox */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggleComplete?.(task.id); }}
-        className="shrink-0 p-0.5 rounded-full transition-transform active:scale-90"
-        title={isCompleted ? "Mark incomplete" : "Mark complete"}
-      >
-        {isCompleted ? (
-          <CheckCircle
-            className="w-[18px] h-[18px]"
-            weight="fill"
-            style={{ color: "oklch(0.65 0.15 180)" }}
-          />
-        ) : (
-          <Circle
-            className="w-[18px] h-[18px]"
-            weight="regular"
-            style={{ color: "oklch(0.78 0.01 260)" }}
-          />
-        )}
-      </button>
-
-      {/* Task title */}
-      <span
-        className={`flex-1 min-w-0 truncate ${isCompleted ? "line-through" : ""}`}
-        style={{
-          color: isCompleted ? "var(--text-quaternary)" : "var(--text-primary)",
-          fontSize: "13.5px",
-          fontWeight: 400,
-        }}
-      >
-        {task.title}
-      </span>
-
-      {/* Project pill */}
-      {showProject && pName && (
-        <span
-          className="shrink-0 hidden sm:inline-flex items-center px-2 py-0.5 rounded-[4px] truncate max-w-[100px]"
-          style={{
-            background: "oklch(0.96 0.01 260)",
-            border: "1px solid oklch(0.92 0.01 260)",
-            color: "var(--text-tertiary)",
-            fontSize: "11px",
-            fontWeight: 500,
-          }}
-        >
-          {displayProjectName(pName)}
-        </span>
-      )}
-
-      {/* Due date */}
-      {task.date && (
-        <span
-          className="shrink-0 hidden sm:inline"
-          style={{
-            color: "var(--text-quaternary)",
-            fontSize: "12px",
-            fontWeight: 400,
-          }}
-        >
-          {formatShortDate(task.date)}
-        </span>
-      )}
-
-      {/* Today sun icon */}
-      {onToggleToday && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleToday(task.id); }}
-          className={`shrink-0 p-0.5 rounded transition-all hover:bg-black/[0.04] ${isToday ? "opacity-100" : "opacity-0 group-hover/hrow:opacity-40 hover:!opacity-80"}`}
-          style={{
-            color: isToday ? "#F59E0B" : "var(--text-quaternary)",
-          }}
-          title={isToday ? "Remove from Today" : "Add to Today"}
-        >
-          <Sun className="w-[15px] h-[15px]" weight={isToday ? "fill" : "regular"} />
-        </button>
-      )}
-
-      {/* Lineup queue icon */}
-      {onToggleLineup && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleLineup(task.id); }}
-          className={`shrink-0 p-0.5 rounded transition-all hover:bg-black/[0.04] ${isLineup ? "opacity-100" : "opacity-0 group-hover/hrow:opacity-40 hover:!opacity-80"}`}
-          style={{
-            color: isLineup ? "#3B82F6" : "var(--text-quaternary)",
-          }}
-          title={isLineup ? "Remove from Lineup" : "Add to Lineup"}
-        >
-          <Queue className="w-[15px] h-[15px]" weight={isLineup ? "fill" : "regular"} />
-        </button>
-      )}
-    </div>
-  );
-}
-
 function HomeTaskList({
   tasks,
   showProject = false,
@@ -897,10 +769,17 @@ function HomeTaskList({
   onToggleComplete,
   onToggleToday,
   onToggleLineup,
+  onStatusChange,
+  onTitleChange,
+  onPriorityChange,
+  onDateChange,
+  onAssigneeChange,
+  onDelete,
   projectColors,
   emptyMessage = "No tasks",
   onClickTask,
   showCompletedDivider = false,
+  teamMembers,
 }: {
   tasks: (TaskItem & { projectName?: string })[];
   showProject?: boolean;
@@ -909,10 +788,17 @@ function HomeTaskList({
   onToggleComplete?: (taskId: string) => void;
   onToggleToday?: (taskId: string) => void;
   onToggleLineup?: (taskId: string) => void;
+  onStatusChange?: (taskId: string, status: TaskStatus) => void;
+  onTitleChange?: (taskId: string, title: string) => void;
+  onPriorityChange?: (taskId: string, priority: Priority) => void;
+  onDateChange?: (taskId: string, date: string | undefined) => void;
+  onAssigneeChange?: (taskId: string, assignee: string | undefined) => void;
+  onDelete?: (taskId: string) => void;
   projectColors?: Record<string, string>;
   emptyMessage?: string;
   onClickTask?: (task: TaskItem & { projectName?: string }) => void;
   showCompletedDivider?: boolean;
+  teamMembers?: { userId: string; displayName: string; avatarColor?: string; avatarUrl?: string }[];
 }) {
   if (tasks.length === 0) {
     return (
@@ -936,9 +822,10 @@ function HomeTaskList({
       exit={{ opacity: 0, height: 0, marginBottom: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <HomeTaskRow
+      <TaskRow
         task={task}
         showProject={showProject}
+        projectName={task.projectName}
         projectColor={
           task.projectName && projectColors
             ? projectColors[task.projectName]
@@ -946,10 +833,22 @@ function HomeTaskList({
         }
         isToday={todayIds?.has(task.id)}
         isLineup={lineupIds?.has(task.id)}
-        onToggleComplete={onToggleComplete}
+        onStatusChange={onStatusChange}
+        onTitleChange={onTitleChange}
+        onPriorityChange={onPriorityChange}
+        onDateChange={onDateChange}
+        onAssigneeChange={onAssigneeChange}
+        onDelete={onDelete}
         onToggleToday={onToggleToday}
         onToggleLineup={onToggleLineup}
-        onClickTask={onClickTask}
+        onTaskClick={(taskId) => {
+          const t = tasks.find((x) => x.id === taskId);
+          if (t) onClickTask?.(t);
+        }}
+        compact
+        subtaskCount={task.subtasks?.length || 0}
+        subtaskCompleted={task.subtasks?.filter((s) => s.completed).length || 0}
+        teamMembers={teamMembers}
       />
     </motion.div>
   );
@@ -1492,10 +1391,17 @@ export function HomePage() {
                       onToggleComplete={handleToggleComplete}
                       onToggleToday={(id) => toggleToday(id)}
                       onToggleLineup={handleToggleLineup}
+                      onStatusChange={handleStatusChange}
+                      onTitleChange={handleTitleChange}
+                      onPriorityChange={handlePriorityChange}
+                      onDateChange={handleDateChange}
+                      onAssigneeChange={handleAssigneeChange}
+                      onDelete={handleDelete}
                       todayIds={todayTaskIds}
                       lineupIds={lineupIds}
                       projectColors={projectColorsFlat}
                       onClickTask={handleClickTask}
+                      teamMembers={teamMembersList}
                       showCompletedDivider
                     />
                     <DocEntryList
@@ -1543,10 +1449,17 @@ export function HomePage() {
                       onToggleComplete={handleToggleComplete}
                       onToggleToday={(id) => toggleToday(id)}
                       onToggleLineup={handleToggleLineup}
+                      onStatusChange={handleStatusChange}
+                      onTitleChange={handleTitleChange}
+                      onPriorityChange={handlePriorityChange}
+                      onDateChange={handleDateChange}
+                      onAssigneeChange={handleAssigneeChange}
+                      onDelete={handleDelete}
                       todayIds={todayTaskIds}
                       lineupIds={lineupIds}
                       projectColors={projectColorsFlat}
                       onClickTask={handleClickTask}
+                      teamMembers={teamMembersList}
                       showCompletedDivider
                     />
                     <DocEntryList
@@ -1636,10 +1549,17 @@ export function HomePage() {
                     onToggleComplete={handleToggleComplete}
                     onToggleToday={(id) => toggleToday(id)}
                     onToggleLineup={handleToggleLineup}
+                    onStatusChange={handleStatusChange}
+                    onTitleChange={handleTitleChange}
+                    onPriorityChange={handlePriorityChange}
+                    onDateChange={handleDateChange}
+                    onAssigneeChange={handleAssigneeChange}
+                    onDelete={handleDelete}
                     todayIds={todayTaskIds}
                     lineupIds={lineupIds}
                     projectColors={projectColorsFlat}
                     onClickTask={handleClickTask}
+                    teamMembers={teamMembersList}
                   />
                 </div>
               ))}
@@ -1668,10 +1588,17 @@ export function HomePage() {
                     tasks={myCompletedTasks}
                     showProject
                     onToggleComplete={handleToggleComplete}
+                    onStatusChange={handleStatusChange}
+                    onTitleChange={handleTitleChange}
+                    onPriorityChange={handlePriorityChange}
+                    onDateChange={handleDateChange}
+                    onAssigneeChange={handleAssigneeChange}
+                    onDelete={handleDelete}
                     todayIds={todayTaskIds}
                     lineupIds={lineupIds}
                     projectColors={projectColorsFlat}
                     onClickTask={handleClickTask}
+                    teamMembers={teamMembersList}
                   />
                 </div>
               )}
@@ -1710,10 +1637,17 @@ export function HomePage() {
                       onToggleComplete={handleToggleComplete}
                       onToggleToday={(id) => toggleToday(id)}
                       onToggleLineup={handleToggleLineup}
+                      onStatusChange={handleStatusChange}
+                      onTitleChange={handleTitleChange}
+                      onPriorityChange={handlePriorityChange}
+                      onDateChange={handleDateChange}
+                      onAssigneeChange={handleAssigneeChange}
+                      onDelete={handleDelete}
                       todayIds={todayTaskIds}
                       lineupIds={lineupIds}
                       projectColors={projectColorsFlat}
                       onClickTask={handleClickTask}
+                      teamMembers={teamMembersList}
                     />
                   </div>
                 ))}
@@ -1739,10 +1673,17 @@ export function HomePage() {
                   tasks={completedToday}
                   showProject
                   onToggleComplete={handleToggleComplete}
+                  onStatusChange={handleStatusChange}
+                  onTitleChange={handleTitleChange}
+                  onPriorityChange={handlePriorityChange}
+                  onDateChange={handleDateChange}
+                  onAssigneeChange={handleAssigneeChange}
+                  onDelete={handleDelete}
                   todayIds={todayTaskIds}
                   lineupIds={lineupIds}
                   projectColors={projectColorsFlat}
                   onClickTask={handleClickTask}
+                  teamMembers={teamMembersList}
                 />
               </div>
             )}

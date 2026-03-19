@@ -19,10 +19,16 @@ interface GlobalTaskDetailContextValue {
 
 const GlobalTaskDetailContext = createContext<GlobalTaskDetailContextValue | null>(null);
 
+const NOOP_CONTEXT: GlobalTaskDetailContextValue = {
+  openTaskDetail: () => {},
+  closeTaskDetail: () => {},
+  openTaskId: null,
+};
+
 export function useGlobalTaskDetail() {
   const ctx = useContext(GlobalTaskDetailContext);
-  if (!ctx) throw new Error("useGlobalTaskDetail must be used within GlobalTaskDetailProvider");
-  return ctx;
+  // Return safe fallback during hot-reload when context may be temporarily unavailable
+  return ctx ?? NOOP_CONTEXT;
 }
 
 export function GlobalTaskDetailProvider({ children }: { children: ReactNode }) {

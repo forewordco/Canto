@@ -553,7 +553,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await performSave();
       }
 
-      const { data, error } = await api.post<BatchLoadResponse>("/data/batch-load", {});
+      const { data, error } = await api.post<BatchLoadResponse>("/data/batch-load", {}, { timeout: 60000 });
 
       if (error) {
         console.error(`[Data] Batch load error: ${error}`);

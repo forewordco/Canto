@@ -48,6 +48,17 @@ import {
   Warning,
   ArrowsClockwise,
   Smiley,
+  ArrowCounterClockwise,
+  ArrowClockwise,
+  Export,
+  ClockCounterClockwise,
+  Keyboard,
+  UploadSimple,
+  ChatCircleDots,
+  Lock as LockIcon,
+  LockOpen,
+  ArrowsOut,
+  Target,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
 import { useData, useAllTasks, useVisibleDocs } from "../lib/data";
@@ -72,12 +83,38 @@ import { ScriptToolbar } from "./docs/ScriptToolbar";
 import { CollaborationBar } from "./docs/CollaborationBar";
 import { useCollaboration, type CollabUser, type CollabOperation } from "../hooks/useCollaboration";
 import { getCollabsOnBlock } from "./docs/RemoteBlockPresence";
+import {
+  useDocHistory,
+  FindReplaceBar,
+  downloadMarkdown,
+  DOC_TEMPLATES,
+  type DocTemplate,
+} from "./docs/DocEditorFeatures";
+import {
+  useAutoVersioning,
+  VersionHistoryPanel,
+  ImportMarkdownModal,
+  KeyboardShortcutsPanel,
+} from "./docs/DocD5Features";
+import {
+  useBlockComments,
+  CommentsPanel,
+  CommentThread,
+  useRecentlyViewed,
+  useDocLock,
+  LockBadge,
+  FocusModeOverlay,
+  useWordGoal,
+  WordGoalPopover,
+  WordGoalBar,
+} from "./docs/DocD6Features";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useNavigation } from "../lib/navigation";
 import { useAuth } from "../lib/auth";
 import { ListToolbar } from "./ListToolbar";
 import type { SortOption } from "./ListToolbar";
+import type { MentionItem } from "./MentionInput";
 
 /* ─── Doc Type Meta ─── */
 interface DocTypeMeta {
@@ -107,7 +144,7 @@ const FOLDER_COLORS = [
 
 /* ─── Sort & Filter ─── */
 type SortBy = "updated" | "created" | "name" | "type";
-type StatusFilter = "all" | "favorited" | "today" | "lineup" | "pinned" | "private";
+type StatusFilter = "all" | "favorited" | "today" | "lineup" | "pinned" | "private" | "recent";
 
 const DOC_SORT_OPTIONS: SortOption[] = [
   { value: "updated", label: "Last Updated" },
@@ -143,6 +180,7 @@ export function DocsPage() {
   const [folderContextMenu, setFolderContextMenu] = useState<{ folderId: string; x: number; y: number } | null>(null);
   const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
+  const [importMdOpen, setImportMdOpen] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Active document
@@ -150,6 +188,12 @@ export function DocsPage() {
     () => (activeDocId ? docs.find((d) => d.id === activeDocId) ?? null : null),
     [activeDocId, docs]
   );
+
+  // Recently viewed tracking (D6)
+  const recentlyViewed = useRecentlyViewed();
+  useEffect(() => {
+    if (activeDocId) recentlyViewed.track(activeDocId);
+  }, [activeDocId]);
 
   /* ─── Filtered & Sorted Docs ─── */
   const filteredDocs = useMemo(() => {
@@ -171,6 +215,13 @@ export function DocsPage() {
     else if (statusFilter === "lineup") result = result.filter((d) => d.lineup);
     else if (statusFilter === "pinned") result = result.filter((d) => d.pinned);
     else if (statusFilter === "private") result = result.filter((d) => d.private);
+    else if (statusFilter === "recent") {
+      const recentIds = new Set(recentlyViewed.recent.map((r) => r.docId));
+      result = result.filter((d) => recentIds.has(d.id));
+      // Sort by recently viewed order
+      const orderMap = new Map(recentlyViewed.recent.map((r, i) => [r.docId, i]));
+      result.sort((a, b) => (orderMap.get(a.id) ?? 999) - (orderMap.get(b.id) ?? 999));
+    }
 
     // Search
     if (searchQuery.trim()) {
@@ -212,14 +263,16 @@ export function DocsPage() {
 
   /* ─── Create Document ─── */
   const handleCreateDoc = useCallback(
-    (type: DocType, title: string, folderId?: string, spaceId?: string) => {
+    (type: DocType, title: string, folderId?: string, spaceId?: string, templateBlocks?: DocBlock[]) => {
       const now = new Date().toISOString();
       const newDoc: WorkspaceDoc = {
         id: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         title: title || `Untitled ${DOC_TYPE_META[type].label}`,
         type,
         folderId: folderId || activeFolderId || undefined,
-        blocks: [{ id: generateBlockId(), type: "paragraph", content: "" }],
+        blocks: templateBlocks
+          ? templateBlocks.map((b) => ({ ...b, id: generateBlockId() }))
+          : [{ id: generateBlockId(), type: "paragraph", content: "" }],
         createdAt: now,
         updatedAt: now,
         spaceId,
@@ -493,6 +546,15 @@ export function DocsPage() {
             hideOptions
           />
 
+          <button
+            onClick={() => setImportMdOpen(true)}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg transition-colors hover:bg-black/[0.04]"
+            style={{ color: "var(--text-secondary)", fontSize: "13px", fontWeight: 500, border: "1px solid var(--border-default)" }}
+            title="Import from Markdown"
+          >
+            <UploadSimple className="w-4 h-4" />
+            <span className="hidden sm:inline">Import</span>
+          </button>
           <button
             onClick={() => setCreateModalOpen(true)}
             className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-white transition-opacity hover:opacity-90"
@@ -820,6 +882,16 @@ export function DocsPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Import from Markdown Modal (D5) */}
+      <ImportMarkdownModal
+        open={importMdOpen}
+        onClose={() => setImportMdOpen(false)}
+        onImport={(title, blocks) => {
+          handleCreateDoc("doc", title, undefined, undefined, blocks);
+          toast.success(`Imported "${title}"`);
+        }}
+      />
     </div>
   );
 }
@@ -1067,12 +1139,44 @@ function DocumentEditor({
   const [showScriptPanels, setShowScriptPanels] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [editorFocusedBlockId, setEditorFocusedBlockId] = useState<string | null>(null);
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [showCommentsPanel, setShowCommentsPanel] = useState(false);
+  const [commentPopover, setCommentPopover] = useState<{ blockId: string; top: number; left: number } | null>(null);
+  const [showWordGoalPopover, setShowWordGoalPopover] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const prevBlocksRef = useRef<DocBlock[]>(doc.blocks || []);
   const isRemoteUpdateRef = useRef(false);
-  const { updateDoc, isStarred, toggleStarred, projects, clients } = useData();
+  const { updateDoc, isStarred, toggleStarred, projects, clients, teamMembers } = useData();
+
+  // ── Undo/Redo history (D4) ──
+  const history = useDocHistory(doc.blocks || []);
+
+  // ── Auto-versioning (D5) ──
+  const versioning = useAutoVersioning(doc.id, doc.blocks || []);
+
+  // ── D6 hooks ──
+  const blockComments = useBlockComments(doc.id);
+  const docLock = useDocLock(doc.id);
+  const wordGoal = useWordGoal(doc.id);
+  const blocks = doc.blocks || [];
+  const wordCount = useMemo(() => blocks.reduce((acc, b) => acc + (b.content?.split(/\s+/).filter(Boolean).length || 0), 0), [blocks]);
+
   const allTasks = useAllTasks();
   const { user, profile } = useAuth();
+
+  // Build mention items from team members
+  const mentionItems: MentionItem[] = useMemo(() => {
+    return teamMembers.map((m) => ({
+      id: m.userId,
+      label: m.displayName,
+      type: "person" as const,
+      color: m.avatarColor,
+      avatarUrl: m.avatarUrl,
+    }));
+  }, [teamMembers]);
 
   // Real-time collaboration (D12)
   const handleRemoteOperation = useCallback((op: CollabOperation, _senderId: string) => {
@@ -1178,9 +1282,52 @@ function DocumentEditor({
       collab.broadcastBlocksReorder(newBlocks.map((b) => b.id));
     }
 
+    // Push to undo history (D4)
+    history.push(newBlocks);
+
     prevBlocksRef.current = newBlocks;
     onBlocksChange(newBlocks);
-  }, [onBlocksChange, collab]);
+  }, [onBlocksChange, collab, history]);
+
+  // ── Undo/Redo keyboard shortcuts (D4) ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      // Cmd+Z = undo, Cmd+Shift+Z = redo
+      if (mod && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        const blocks = history.undo();
+        if (blocks) {
+          prevBlocksRef.current = blocks;
+          onBlocksChange(blocks);
+        }
+      } else if (mod && e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        const blocks = history.redo();
+        if (blocks) {
+          prevBlocksRef.current = blocks;
+          onBlocksChange(blocks);
+        }
+      }
+      // Cmd+F = find/replace
+      else if (mod && e.key === "f") {
+        e.preventDefault();
+        setShowFindReplace(true);
+      }
+      // Cmd+/ = keyboard shortcuts (D5)
+      else if (mod && e.key === "/") {
+        e.preventDefault();
+        setShowKeyboardShortcuts((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [history, onBlocksChange]);
+
+  // Clear history when switching docs
+  useEffect(() => {
+    history.clear();
+  }, [doc.id]);
 
   // Keep prevBlocksRef in sync when doc.blocks changes from external sources
   useEffect(() => {
@@ -1857,6 +2004,33 @@ function DocumentEditor({
                     {doc.pinned ? "Unpin" : "Pin"}
                   </button>
 
+                  <button
+                    onClick={() => { downloadMarkdown(doc.title || "Untitled", doc.blocks || []); toast.success("Exported to Markdown"); setShowMenu(false); }}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                    style={{ color: "var(--text-secondary)", fontSize: "13px" }}
+                  >
+                    <Export className="w-4 h-4" />
+                    Export as Markdown
+                  </button>
+
+                  <button
+                    onClick={() => { setShowVersionHistory(true); setShowMenu(false); }}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                    style={{ color: "var(--text-secondary)", fontSize: "13px" }}
+                  >
+                    <ClockCounterClockwise className="w-4 h-4" />
+                    Version History
+                  </button>
+
+                  <button
+                    onClick={() => { setShowKeyboardShortcuts(true); setShowMenu(false); }}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                    style={{ color: "var(--text-secondary)", fontSize: "13px" }}
+                  >
+                    <Keyboard className="w-4 h-4" />
+                    Keyboard Shortcuts
+                  </button>
+
                   <div className="mx-2 my-1 h-px" style={{ background: "var(--border-default)" }} />
 
                   <button
@@ -1969,6 +2143,129 @@ function DocumentEditor({
 
         {/* Right: toolbar buttons */}
         <div className="flex items-center gap-1.5">
+          {/* Undo (D4) */}
+          <button
+            onClick={() => { const blocks = history.undo(); if (blocks) { prevBlocksRef.current = blocks; onBlocksChange(blocks); } }}
+            disabled={!history.canUndo}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-30"
+            style={{ color: "var(--text-quaternary)" }}
+            title="Undo (Cmd+Z)"
+          >
+            <ArrowCounterClockwise className="w-4 h-4" />
+          </button>
+          {/* Redo (D4) */}
+          <button
+            onClick={() => { const blocks = history.redo(); if (blocks) { prevBlocksRef.current = blocks; onBlocksChange(blocks); } }}
+            disabled={!history.canRedo}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-30"
+            style={{ color: "var(--text-quaternary)" }}
+            title="Redo (Cmd+Shift+Z)"
+          >
+            <ArrowClockwise className="w-4 h-4" />
+          </button>
+
+          {/* Find & Replace (D4) */}
+          <button
+            onClick={() => setShowFindReplace(!showFindReplace)}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: showFindReplace ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+            title="Find & Replace (Cmd+F)"
+          >
+            <MagnifyingGlass className="w-4 h-4" />
+          </button>
+
+          {/* Export Markdown (D4) */}
+          <button
+            onClick={() => { downloadMarkdown(doc.title || "Untitled", doc.blocks || []); toast.success("Exported to Markdown"); }}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: "var(--text-quaternary)" }}
+            title="Export as Markdown"
+          >
+            <Export className="w-4 h-4" />
+          </button>
+
+          {/* Version History (D5) */}
+          <button
+            onClick={() => setShowVersionHistory(!showVersionHistory)}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: showVersionHistory ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+            title="Version History"
+          >
+            <ClockCounterClockwise className="w-4 h-4" />
+          </button>
+
+          {/* Keyboard Shortcuts (D5) */}
+          <button
+            onClick={() => setShowKeyboardShortcuts(true)}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: "var(--text-quaternary)" }}
+            title="Keyboard Shortcuts"
+          >
+            <Keyboard className="w-4 h-4" />
+          </button>
+
+          {/* Comments (D6) */}
+          <button
+            onClick={() => setShowCommentsPanel(!showCommentsPanel)}
+            className="relative p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: showCommentsPanel ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+            title="Comments"
+          >
+            <ChatCircleDots className="w-4 h-4" />
+            {blockComments.totalUnresolved > 0 && (
+              <span
+                className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] rounded-full"
+                style={{ background: "var(--accent-primary)", color: "white", fontSize: "9px", fontWeight: 700 }}
+              >
+                {blockComments.totalUnresolved}
+              </span>
+            )}
+          </button>
+
+          {/* Lock (D6) */}
+          <button
+            onClick={docLock.toggle}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: docLock.locked ? "oklch(0.65 0.14 55)" : "var(--text-quaternary)" }}
+            title={docLock.locked ? "Unlock Document" : "Lock Document"}
+          >
+            {docLock.locked ? <LockIcon className="w-4 h-4" weight="fill" /> : <LockOpen className="w-4 h-4" />}
+          </button>
+
+          {/* Focus Mode (D6) */}
+          <button
+            onClick={() => setFocusMode(true)}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: "var(--text-quaternary)" }}
+            title="Focus Mode"
+          >
+            <ArrowsOut className="w-4 h-4" />
+          </button>
+
+          {/* Word Goal (D6) */}
+          <div className="relative">
+            <button
+              onClick={() => setShowWordGoalPopover(!showWordGoalPopover)}
+              className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+              style={{ color: wordGoal.goal ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+              title="Word Goal"
+            >
+              <Target className="w-4 h-4" />
+            </button>
+            <AnimatePresence>
+              {showWordGoalPopover && (
+                <WordGoalPopover
+                  docId={doc.id}
+                  wordCount={wordCount}
+                  onClose={() => setShowWordGoalPopover(false)}
+                />
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-4" style={{ background: "var(--border-default)" }} />
+
           {/* Blocks panel toggle */}
           <div className="relative">
             <button
@@ -2108,7 +2405,42 @@ function DocumentEditor({
       </div>
 
       {/* ═══ EDITOR BODY ═══ Full-width container so marquee selection works from page margins */}
-      <div className={`flex-1 flex flex-col ${doc.coverImage ? "pt-0" : "pt-4"} pb-28 md:pb-10`}>
+      <div className={`flex-1 flex flex-col ${doc.coverImage ? "pt-0" : "pt-4"} pb-28 md:pb-10 relative`}>
+        {/* Find & Replace Bar (D4) */}
+        {showFindReplace && (
+          <FindReplaceBar
+            blocks={doc.blocks || []}
+            onClose={() => setShowFindReplace(false)}
+            onHighlightBlock={(blockId) => {
+              const el = document.querySelector(`[data-block-id="${blockId}"]`);
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                el.classList.add("ring-2", "ring-blue-400/50");
+                setTimeout(() => el.classList.remove("ring-2", "ring-blue-400/50"), 1500);
+              }
+            }}
+            onReplaceInBlock={(blockId, search, replacement) => {
+              const blocks = doc.blocks || [];
+              const updated = blocks.map((b) => {
+                if (b.id !== blockId) return b;
+                const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+                return { ...b, content: b.content.replace(regex, replacement) };
+              });
+              handleBlocksChangeWithBroadcast(updated);
+            }}
+            onReplaceAll={(search, replacement) => {
+              const blocks = doc.blocks || [];
+              const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+              const updated = blocks.map((b) => ({
+                ...b,
+                content: b.content ? b.content.replace(regex, replacement) : b.content,
+              }));
+              handleBlocksChangeWithBroadcast(updated);
+              toast.success("Replaced all occurrences");
+            }}
+          />
+        )}
+
         {/* Constrained content wrapper for title, icons, meeting bar */}
         <div className={fullWidth ? "px-6 md:px-12" : "px-6 md:px-[88px] max-w-3xl mx-auto w-full"}>
 
@@ -2157,13 +2489,21 @@ function DocumentEditor({
             </div>
           )}
 
+          {/* Lock badge (D6) */}
+          {docLock.locked && (
+            <div className="mb-3">
+              <LockBadge locked />
+            </div>
+          )}
+
           {/* Title */}
           <input
             ref={titleRef}
             value={doc.title}
-            onChange={(e) => { onTitleChange(e.target.value); collab.broadcastTitleChange(e.target.value); }}
+            onChange={(e) => { if (!docLock.locked) { onTitleChange(e.target.value); collab.broadcastTitleChange(e.target.value); } }}
             placeholder="Untitled Document"
             className="w-full bg-transparent outline-none mb-8"
+            readOnly={docLock.locked}
             style={{
               color: doc.title ? "var(--text-primary)" : "oklch(0.45 0.03 260 / 0.5)",
               fontSize: doc.type === "script" ? "24px" : "28px",
@@ -2171,6 +2511,7 @@ function DocumentEditor({
               lineHeight: 1.2,
               fontFamily: doc.type === "script" ? "'Courier Prime', monospace" : undefined,
               textAlign: doc.type === "script" ? "center" : undefined,
+              cursor: docLock.locked ? "default" : undefined,
             }}
           />
 
@@ -2232,6 +2573,8 @@ function DocumentEditor({
           collaborators={collab.collaborators}
           onBlockFocus={handleEditorBlockFocus}
           onBlockUpdate={(blockId, updates) => collab.broadcastBlockUpdate(blockId, updates)}
+          mentionItems={mentionItems}
+          allDocs={allDocs}
         />
 
         {/* AI Prompt Inline */}
@@ -2258,6 +2601,12 @@ function DocumentEditor({
             onUpdate={(updates) => updateDoc(doc.id, { ...updates, updatedAt: new Date().toISOString() })}
             onDelete={onDelete}
           />
+          {/* Word Goal Bar (D6) */}
+          {wordGoal.goal && wordGoal.goal > 0 && (
+            <div className="mt-2">
+              <WordGoalBar wordCount={wordCount} goal={wordGoal.goal} />
+            </div>
+          )}
         </div>
 
       {/* ─── Mobile bottom sheet: Blocks panel ─── */}
@@ -2461,6 +2810,84 @@ function DocumentEditor({
         />
       )}
     </AnimatePresence>
+
+    {/* Version History Panel (D5) — slides in from right */}
+    <AnimatePresence>
+      {showVersionHistory && (
+        <VersionHistoryPanel
+          docId={doc.id}
+          currentBlocks={doc.blocks || []}
+          onRestore={(blocks) => {
+            handleBlocksChangeWithBroadcast(blocks);
+            toast.success("Restored to previous version");
+            setShowVersionHistory(false);
+          }}
+          onClose={() => setShowVersionHistory(false)}
+          onSaveNow={(label) => {
+            versioning.saveNow(label);
+            toast.success("Version saved");
+          }}
+        />
+      )}
+    </AnimatePresence>
+
+    {/* Keyboard Shortcuts Panel (D5) */}
+    <KeyboardShortcutsPanel
+      open={showKeyboardShortcuts}
+      onClose={() => setShowKeyboardShortcuts(false)}
+    />
+
+    {/* Comments Panel (D6) */}
+    <AnimatePresence>
+      {showCommentsPanel && (
+        <CommentsPanel
+          docId={doc.id}
+          onClose={() => setShowCommentsPanel(false)}
+          onScrollToBlock={(blockId) => {
+            const el = document.querySelector(`[data-block-id="${blockId}"]`);
+            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        />
+      )}
+    </AnimatePresence>
+
+    {/* Comment Thread Popover (D6) */}
+    <AnimatePresence>
+      {commentPopover && (
+        <CommentThread
+          docId={doc.id}
+          blockId={commentPopover.blockId}
+          position={{ top: commentPopover.top, left: commentPopover.left }}
+          onClose={() => setCommentPopover(null)}
+        />
+      )}
+    </AnimatePresence>
+
+    {/* Focus Mode Overlay (D6) */}
+    <AnimatePresence>
+      {focusMode && (
+        <FocusModeOverlay
+          active={focusMode}
+          onExit={() => setFocusMode(false)}
+          wordCount={wordCount}
+          wordGoal={wordGoal.goal}
+        >
+          <input
+            value={doc.title}
+            onChange={(e) => { if (!docLock.locked) onTitleChange(e.target.value); }}
+            placeholder="Untitled Document"
+            className="w-full bg-transparent outline-none mb-8"
+            readOnly={docLock.locked}
+            style={{ color: "var(--text-primary)", fontSize: "28px", fontWeight: 700, lineHeight: 1.2 }}
+          />
+          <DescriptionBlockEditor
+            blocks={doc.blocks || []}
+            onChange={(newBlocks) => { if (!docLock.locked) handleBlocksChangeWithBroadcast(newBlocks); }}
+            readOnly={docLock.locked}
+          />
+        </FocusModeOverlay>
+      )}
+    </AnimatePresence>
     </div>
   );
 }
@@ -2653,7 +3080,7 @@ function CreateDocModal({
   activeFolderId,
 }: {
   onClose: () => void;
-  onCreate: (type: DocType, title: string, folderId?: string, spaceId?: string) => void;
+  onCreate: (type: DocType, title: string, folderId?: string, spaceId?: string, templateBlocks?: DocBlock[]) => void;
   folders: DocFolder[];
   activeFolderId: string | null;
 }) {
@@ -2661,11 +3088,23 @@ function CreateDocModal({
   const [title, setTitle] = useState("");
   const [folderId, setFolderId] = useState<string | undefined>(activeFolderId || undefined);
   const [spaceId, setSpaceId] = useState<string | undefined>(undefined);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("blank");
   const titleRef = useRef<HTMLInputElement>(null);
+
+  // Filter templates by selected type (+ blank is always shown)
+  const filteredTemplates = DOC_TEMPLATES.filter(
+    (t) => t.id === "blank" || t.type === selectedType
+  );
 
   useEffect(() => {
     requestAnimationFrame(() => titleRef.current?.focus());
   }, []);
+
+  const handleCreate = () => {
+    const tmpl = DOC_TEMPLATES.find((t) => t.id === selectedTemplate);
+    const blocks = tmpl && tmpl.id !== "blank" ? tmpl.blocks : undefined;
+    onCreate(selectedType, title, folderId, spaceId, blocks);
+  };
 
   return (
     <ResponsiveModal open={true} onClose={onClose} title="New Document">
@@ -2678,7 +3117,7 @@ function CreateDocModal({
             {DOC_TYPES.map((dt) => (
               <button
                 key={dt.type}
-                onClick={() => setSelectedType(dt.type)}
+                onClick={() => { setSelectedType(dt.type); setSelectedTemplate("blank"); }}
                 className="flex items-center gap-2 px-3 py-2.5 rounded-[6px] text-left transition-colors"
                 style={{
                   border: `1.5px solid ${selectedType === dt.type ? dt.color : "var(--border-default)"}`,
@@ -2713,7 +3152,7 @@ function CreateDocModal({
             }}
             onFocus={(e) => (e.target.style.boxShadow = "0 0 0 2px var(--accent-primary-subtle)")}
             onBlur={(e) => (e.target.style.boxShadow = "none")}
-            onKeyDown={(e) => { if (e.key === "Enter") onCreate(selectedType, title, folderId, spaceId); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
           />
         </div>
 
@@ -2741,6 +3180,42 @@ function CreateDocModal({
           </div>
         )}
 
+        {/* Template picker (D4) */}
+        {filteredTemplates.length > 1 && (
+          <div>
+            <label className="block mb-1.5" style={{ color: "var(--text-secondary)", fontSize: "13px", fontWeight: 500 }}>
+              Template
+            </label>
+            <div className="grid grid-cols-2 gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+              {filteredTemplates.map((tmpl) => {
+                const sel = selectedTemplate === tmpl.id;
+                return (
+                  <button
+                    key={tmpl.id}
+                    onClick={() => setSelectedTemplate(tmpl.id)}
+                    className="flex items-start gap-2 px-2.5 py-2 rounded-[6px] text-left transition-colors"
+                    style={{
+                      border: `1.5px solid ${sel ? tmpl.color : "var(--border-default)"}`,
+                      background: sel ? `${tmpl.color}0a` : "var(--neutral-50)",
+                      fontSize: "12px",
+                    }}
+                  >
+                    <tmpl.icon className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: tmpl.color }} />
+                    <div className="min-w-0">
+                      <div className="truncate" style={{ color: sel ? tmpl.color : "var(--text-primary)", fontWeight: sel ? 600 : 500 }}>
+                        {tmpl.label}
+                      </div>
+                      <div className="truncate" style={{ color: "var(--text-quaternary)", fontSize: "10px" }}>
+                        {tmpl.description}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Space assignment */}
         <div>
           <label className="block mb-1.5" style={{ color: "var(--text-secondary)", fontSize: "13px", fontWeight: 500 }}>
@@ -2763,7 +3238,7 @@ function CreateDocModal({
           Cancel
         </button>
         <button
-          onClick={() => onCreate(selectedType, title, folderId, spaceId)}
+          onClick={handleCreate}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[6px] text-white transition-opacity hover:opacity-90"
           style={{ background: "var(--accent-primary)", fontSize: "13px", fontWeight: 500 }}
         >

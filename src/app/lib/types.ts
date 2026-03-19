@@ -123,7 +123,7 @@ export interface DocBlock {
   /** Toggle block collapsed state */
   collapsed?: boolean;
   /** Embed block type */
-  embedType?: "youtube" | "video" | "photo";
+  embedType?: "youtube" | "video" | "photo" | "unsplash";
   /** Embed block URL */
   embedUrl?: string;
   /** Table block data */
@@ -591,6 +591,7 @@ export interface WorkspaceDoc {
   coverImageY?: number;
   /** Organization flags */
   pinned?: boolean;
+  favorited?: boolean;
   private?: boolean;
   /** Custom icon name */
   icon?: string;
@@ -605,9 +606,12 @@ export interface WorkspaceDoc {
   /** Cross-references */
   linkedProjectId?: string;
   linkedClientId?: string;
+  linkedClientName?: string;
   linkedTaskId?: string;
   /** Meeting-specific */
   meetingStatus?: "on-track" | "at-risk" | "off-track" | "on-hold" | "complete" | "dropped";
+  meetingProjectStatus?: string;
+  calendarLink?: string;
   /** Script-specific */
   characters?: string[];
   locations?: string[];

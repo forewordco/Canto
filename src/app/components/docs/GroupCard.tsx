@@ -22,6 +22,7 @@ import {
   Eye,
   Rows,
   Kanban,
+  X,
 } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import type { WorkspaceDoc, DocBlock } from "../../lib/types";
@@ -42,6 +43,12 @@ interface GroupCardProps {
   readOnly?: boolean;
   /** Whether selected */
   selected?: boolean;
+  /** Available docs to link to */
+  availableDocs?: WorkspaceDoc[];
+  /** Link an existing doc by ID */
+  onLinkDoc?: (docId: string) => void;
+  /** Unlink (detach) the current doc */
+  onUnlink?: () => void;
 }
 
 const CARD_STYLES: { style: GroupCardStyle; icon: React.ElementType; label: string }[] = [
@@ -86,23 +93,50 @@ export function GroupCard({
   onChangeStyle,
   readOnly,
   selected,
+  availableDocs = [],
+  onLinkDoc,
+  onUnlink,
 }: GroupCardProps) {
   const [showStylePicker, setShowStylePicker] = React.useState(false);
+  const [showDocPicker, setShowDocPicker] = React.useState(false);
+  const [docSearch, setDocSearch] = React.useState("");
 
   if (!linkedDoc) {
     return (
       <div
-        className="rounded-[8px] px-4 py-3 flex items-center gap-3 cursor-pointer transition-colors hover:bg-black/[0.02]"
+        className="rounded-[8px] px-4 py-3 space-y-2"
         style={{
           border: "1px dashed var(--border-default)",
           background: "var(--neutral-50)",
         }}
-        onClick={onNavigate}
       >
-        <FileText className="w-4 h-4" style={{ color: "var(--text-quaternary)" }} />
-        <span style={{ fontSize: "13px", color: "var(--text-quaternary)", fontStyle: "italic" }}>
-          Linked document not found
-        </span>
+        <div className="flex items-center gap-3">
+          <FileText className="w-4 h-4" style={{ color: "var(--text-quaternary)" }} />
+          <span style={{ fontSize: "13px", color: "var(--text-quaternary)", fontStyle: "italic" }}>
+            No document linked
+          </span>
+        </div>
+        {!readOnly && onLinkDoc && availableDocs.length > 0 && (
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowDocPicker(!showDocPicker); }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04]"
+              style={{ fontSize: "12px", color: "var(--accent-primary)", fontWeight: 500 }}
+            >
+              <ArrowSquareOut className="w-3.5 h-3.5" />
+              Link existing document
+            </button>
+            {showDocPicker && (
+              <DocPickerDropdown
+                docs={availableDocs}
+                search={docSearch}
+                onSearchChange={setDocSearch}
+                onSelect={(docId) => { onLinkDoc(docId); setShowDocPicker(false); setDocSearch(""); }}
+                onClose={() => { setShowDocPicker(false); setDocSearch(""); }}
+              />
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -126,7 +160,7 @@ export function GroupCard({
         </span>
         <CaretRight className="w-3.5 h-3.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-quaternary)" }} />
         {!readOnly && onChangeStyle && (
-          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} />
+          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} availableDocs={availableDocs} onLinkDoc={onLinkDoc} onUnlink={onUnlink} hasLinkedDoc={!!linkedDoc} />
         )}
       </div>
     );
@@ -155,7 +189,7 @@ export function GroupCard({
           </p>
         )}
         {!readOnly && onChangeStyle && (
-          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} />
+          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} availableDocs={availableDocs} onLinkDoc={onLinkDoc} onUnlink={onUnlink} hasLinkedDoc={!!linkedDoc} />
         )}
       </div>
     );
@@ -196,7 +230,7 @@ export function GroupCard({
         </div>
 
         {!readOnly && onChangeStyle && (
-          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} />
+          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} availableDocs={availableDocs} onLinkDoc={onLinkDoc} onUnlink={onUnlink} hasLinkedDoc={!!linkedDoc} />
         )}
       </div>
     );
@@ -239,7 +273,7 @@ export function GroupCard({
         </div>
 
         {!readOnly && onChangeStyle && (
-          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} />
+          <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} availableDocs={availableDocs} onLinkDoc={onLinkDoc} onUnlink={onUnlink} hasLinkedDoc={!!linkedDoc} />
         )}
       </div>
     );
@@ -293,7 +327,7 @@ export function GroupCard({
       </div>
 
       {!readOnly && onChangeStyle && (
-        <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} />
+        <StylePickerButton showStylePicker={showStylePicker} setShowStylePicker={setShowStylePicker} onChangeStyle={onChangeStyle} cardStyle={cardStyle} availableDocs={availableDocs} onLinkDoc={onLinkDoc} onUnlink={onUnlink} hasLinkedDoc={!!linkedDoc} />
       )}
     </div>
   );
@@ -307,28 +341,39 @@ function StylePickerButton({
   setShowStylePicker,
   onChangeStyle,
   cardStyle,
+  availableDocs = [],
+  onLinkDoc,
+  onUnlink,
+  hasLinkedDoc,
 }: {
   showStylePicker: boolean;
   setShowStylePicker: (v: boolean) => void;
   onChangeStyle: (style: GroupCardStyle) => void;
   cardStyle: GroupCardStyle;
+  availableDocs?: WorkspaceDoc[];
+  onLinkDoc?: (docId: string) => void;
+  onUnlink?: () => void;
+  hasLinkedDoc?: boolean;
 }) {
+  const [showDocPicker, setShowDocPicker] = React.useState(false);
+  const [docSearch, setDocSearch] = React.useState("");
+
   return (
     <div className="absolute top-1.5 right-1.5 z-10">
       <button
         onClick={(e) => { e.stopPropagation(); setShowStylePicker(!showStylePicker); }}
         className="p-1 rounded-[4px] transition-all opacity-0 group-hover:opacity-100 hover:bg-black/[0.06]"
         style={{ color: "var(--text-quaternary)" }}
-        title="Change card style"
+        title="Card options"
       >
         <DotsThree className="w-4 h-4" weight="bold" />
       </button>
 
       {showStylePicker && (
         <>
-          <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowStylePicker(false); }} />
+          <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowStylePicker(false); setShowDocPicker(false); }} />
           <motion.div
-            className="absolute right-0 top-7 z-20 rounded-[8px] shadow-xl py-1 min-w-[140px]"
+            className="absolute right-0 top-7 z-20 rounded-[8px] shadow-xl py-1 min-w-[160px]"
             style={{
               background: "white",
               border: "1px solid var(--border-default)",
@@ -362,9 +407,112 @@ function StylePickerButton({
                 {cs.label}
               </button>
             ))}
+
+            {/* Divider */}
+            <div className="my-1" style={{ borderTop: "1px solid var(--border-default)" }} />
+
+            {/* Link existing doc */}
+            {onLinkDoc && availableDocs.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowDocPicker(!showDocPicker); }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-left transition-colors hover:bg-black/[0.04]"
+                  style={{ fontSize: "13px", color: "var(--text-primary)" }}
+                >
+                  <ArrowSquareOut className="w-3.5 h-3.5" />
+                  {hasLinkedDoc ? "Change linked doc" : "Link existing doc"}
+                </button>
+                {showDocPicker && (
+                  <DocPickerDropdown
+                    docs={availableDocs}
+                    search={docSearch}
+                    onSearchChange={setDocSearch}
+                    onSelect={(docId) => {
+                      onLinkDoc(docId);
+                      setShowDocPicker(false);
+                      setShowStylePicker(false);
+                      setDocSearch("");
+                    }}
+                    onClose={() => { setShowDocPicker(false); setDocSearch(""); }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Unlink */}
+            {hasLinkedDoc && onUnlink && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUnlink();
+                  setShowStylePicker(false);
+                }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-left transition-colors hover:bg-black/[0.04]"
+                style={{ fontSize: "13px", color: "oklch(0.65 0.2 25)" }}
+              >
+                <X className="w-3.5 h-3.5" />
+                Unlink document
+              </button>
+            )}
           </motion.div>
         </>
       )}
+    </div>
+  );
+}
+
+/* ─── Doc Picker Dropdown ─── */
+function DocPickerDropdown({
+  docs,
+  search,
+  onSearchChange,
+  onSelect,
+  onClose,
+}: {
+  docs: WorkspaceDoc[];
+  search: string;
+  onSearchChange: (v: string) => void;
+  onSelect: (docId: string) => void;
+  onClose: () => void;
+}) {
+  const filtered = docs.filter((d) =>
+    (d.title || "Untitled").toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div
+      className="absolute left-0 top-full mt-1 z-30 rounded-[8px] shadow-xl overflow-hidden"
+      style={{ background: "white", border: "1px solid var(--border-default)", width: "220px" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="px-2 py-1.5">
+        <input
+          autoFocus
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+          placeholder="Search docs..."
+          className="w-full px-2 py-1 rounded-[4px] outline-none"
+          style={{ fontSize: "12px", background: "var(--neutral-50)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }}
+        />
+      </div>
+      <div className="max-h-[160px] overflow-y-auto">
+        {filtered.length === 0 ? (
+          <p className="px-3 py-2" style={{ fontSize: "12px", color: "var(--text-quaternary)" }}>No docs found</p>
+        ) : (
+          filtered.slice(0, 20).map((d) => (
+            <button
+              key={d.id}
+              onClick={() => onSelect(d.id)}
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-left transition-colors hover:bg-black/[0.04]"
+              style={{ fontSize: "12px", color: "var(--text-primary)" }}
+            >
+              <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-quaternary)" }} />
+              <span className="truncate">{d.title || "Untitled"}</span>
+            </button>
+          ))
+        )}
+      </div>
     </div>
   );
 }

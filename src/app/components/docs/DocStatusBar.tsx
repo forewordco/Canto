@@ -1,7 +1,7 @@
 /* ===================================================================
    DOC STATUS BAR — Bottom stats bar for the document editor.
    
-   Regular docs: block count, word count.
+   Regular docs: block count, word count, char count, reading time.
    Script docs: scene count, element count, character count, location count.
    Minimal actions: Pin, Delete (star/today/lineup are in the header bar).
    =================================================================== */
@@ -15,8 +15,12 @@ import {
   UserCircle,
   MapPin,
   Stack,
+  Clock,
+  TextAlignLeft,
 } from "@phosphor-icons/react";
 import type { WorkspaceDoc } from "../../lib/types";
+
+const WORDS_PER_MINUTE = 238;
 
 interface DocStatusBarProps {
   doc: WorkspaceDoc;
@@ -35,10 +39,10 @@ export function DocStatusBar({
 }: DocStatusBarProps) {
   const blocks = doc.blocks || [];
   const blockCount = blocks.length;
-  const wordCount = blocks.reduce(
-    (acc, b) => acc + (b.content?.split(/\s+/).filter(Boolean).length || 0),
-    0
-  );
+  const allText = blocks.map((b) => b.content || "").join(" ");
+  const wordCount = allText.split(/\s+/).filter(Boolean).length;
+  const charCount = allText.replace(/\s/g, "").length;
+  const readingTime = Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE));
 
   // Script stats
   const isScript = doc.type === "script";
@@ -71,7 +75,7 @@ export function DocStatusBar({
   }: {
     icon: React.ElementType;
     label: string;
-    value: number;
+    value: number | string;
   }) => (
     <div
       className="inline-flex items-center gap-1.5"
@@ -100,7 +104,9 @@ export function DocStatusBar({
         ) : (
           <>
             <StatChip icon={Hash} label="Blocks" value={blockCount} />
-            <StatChip icon={TextAa} label="Words" value={wordCount} />
+            <StatChip icon={TextAa} label="Words" value={wordCount.toLocaleString()} />
+            <StatChip icon={TextAlignLeft} label="Characters" value={charCount.toLocaleString()} />
+            <StatChip icon={Clock} label="Reading time" value={`${readingTime} min read`} />
           </>
         )}
       </div>

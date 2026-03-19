@@ -53,7 +53,7 @@ import {
   SquaresFour,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
-import type { DocBlock, DocBlockType, WorkspaceDoc } from "../lib/types";
+import type { DocBlock, DocBlockType, WorkspaceDoc, UnsplashImageMeta } from "../lib/types";
 import { rewriteText, type RewriteStyle } from "../lib/ai";
 import { toast } from "sonner";
 import { SelectionToolbar } from "./docs/SelectionToolbar";
@@ -61,9 +61,11 @@ import { UnsplashSearchModal } from "./docs/UnsplashSearchModal";
 import { GroupCard, type GroupCardStyle } from "./docs/GroupCard";
 import { RemoteBlockPresence, getCollabsOnBlock, getRemoteBlockBorderStyle } from "./docs/RemoteBlockPresence";
 import type { CollabUser } from "../hooks/useCollaboration";
+import type { MentionItem } from "./MentionInput";
+import { createPortal } from "react-dom";
 
 /* ─── AI Slash Command Types ─── */
-export type AiSlashAction = "ai-write" | "ai-summarize" | "ai-brainstorm" | "ai-outline" | "ai-continue" | "ai-edit";
+export type AiSlashAction = "ai-write" | "ai-summarize" | "ai-brainstorm" | "ai-outline" | "ai-continue" | "ai-edit" | "ai-improve" | "ai-longer" | "ai-shorter" | "ai-fix" | "ai-action-items";
 
 /* ─── ID Generator ─── */
 let blockIdCounter = 0;
@@ -107,6 +109,11 @@ const BLOCK_TYPES: BlockTypeMeta[] = [
   { type: "paragraph", label: "AI Outline", description: "Create document outline", icon: Sparkle, shortcut: "/ai-outline", category: "AI" },
   { type: "paragraph", label: "AI Continue", description: "Continue writing from here", icon: Sparkle, shortcut: "/ai-continue", category: "AI" },
   { type: "paragraph", label: "AI Edit", description: "Edit/revise selected text", icon: Sparkle, shortcut: "/ai-edit", category: "AI" },
+  { type: "paragraph", label: "AI Improve", description: "Improve writing clarity & tone", icon: Sparkle, shortcut: "/ai-improve", category: "AI" },
+  { type: "paragraph", label: "AI Longer", description: "Expand content with more detail", icon: Sparkle, shortcut: "/ai-longer", category: "AI" },
+  { type: "paragraph", label: "AI Shorter", description: "Condense content to be concise", icon: Sparkle, shortcut: "/ai-shorter", category: "AI" },
+  { type: "paragraph", label: "AI Fix Grammar", description: "Fix spelling & grammar", icon: Sparkle, shortcut: "/ai-fix", category: "AI" },
+  { type: "paragraph", label: "AI Action Items", description: "Extract actionable tasks", icon: Sparkle, shortcut: "/ai-action-items", category: "AI" },
 ];
 
 /* ─── Screenplay Block Types (shown only in script mode) ─── */
@@ -191,11 +198,29 @@ interface DescriptionBlockEditorProps {
   collaborators?: CollabUser[];
   /** Called when block focus changes (for collaboration presence tracking) */
   onBlockFocus?: (blockId: string | null) => void;
+  /** Mention items for @-mention autocomplete in blocks */
+  mentionItems?: MentionItem[];
+  /** All docs available for linking (group-card blocks) */
+  allDocs?: WorkspaceDoc[];
 }
 
 /* ─── Helper: read text from contenteditable element ─── */
 function readElText(el: HTMLElement): string {
   return (el.textContent ?? "").replace(/\n$/, "").replace(/\u00A0/g, " ");
+}
+
+/** Read the HTML content from a contenteditable, preserving inline formatting */
+function readElHtml(el: HTMLElement): string {
+  const html = el.innerHTML;
+  // If it's just plain text (no HTML tags), return text to keep storage lean
+  if (!/<[a-z][\s\S]*>/i.test(html)) return readElText(el);
+  // Normalize non-breaking spaces
+  return html.replace(/&nbsp;/g, " ").replace(/\u00A0/g, " ");
+}
+
+/** Check if content contains HTML formatting */
+function hasHtmlFormatting(content: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(content);
 }
 
 /* ─── Helper: place cursor at end of contenteditable ─── */
@@ -228,6 +253,8 @@ export function DescriptionBlockEditor({
   onCreateNestedDoc,
   collaborators = [],
   onBlockFocus,
+  mentionItems = [],
+  allDocs = [],
 }: DescriptionBlockEditorProps) {
   const [focusedBlockId, setFocusedBlockIdRaw] = useState<string | null>(null);
   const setFocusedBlockId = useCallback((id: string | null) => {
@@ -253,6 +280,14 @@ export function DescriptionBlockEditor({
   const [autocompleteIndex, setAutocompleteIndex] = useState(0);
   const [autocompleteBlockId, setAutocompleteBlockId] = useState<string | null>(null);
   const [unsplashModal, setUnsplashModal] = useState<{ mode: "single" | "multi"; blockId: string } | null>(null);
+  const [lightbox, setLightbox] = useState<{ images: UnsplashImageMeta[]; index: number } | null>(null);
+  /* ─── @Mention state ─── */
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionBlockId, setMentionBlockId] = useState<string | null>(null);
+  const mentionOpenRef = useRef(false);
+  mentionOpenRef.current = mentionOpen;
   const lastClickedBlockIdx = useRef<number | null>(null);
   const blockRefs = useRef<Map<string, HTMLElement>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
@@ -287,9 +322,14 @@ export function DescriptionBlockEditor({
 
   /* ─── Filtered slash menu items ─── */
   const filteredSlashItems = useMemo(() => {
-    let items = scriptMode
-      ? [...BLOCK_TYPES.filter((bt) => !["embed", "table", "gallery"].includes(bt.type)), ...SCRIPT_BLOCK_TYPES]
-      : BLOCK_TYPES;
+    let items: BlockTypeMeta[];
+    if (scriptMode) {
+      // Script mode: Script category first, then general block types (no embed/table/gallery)
+      const general = BLOCK_TYPES.filter((bt) => !["embed", "table", "gallery"].includes(bt.type));
+      items = [...SCRIPT_BLOCK_TYPES, ...general];
+    } else {
+      items = BLOCK_TYPES;
+    }
     if (!enableAi) items = items.filter((bt) => bt.category !== "AI");
     if (!slashQuery) return items;
     const q = slashQuery.toLowerCase();
@@ -299,7 +339,14 @@ export function DescriptionBlockEditor({
         bt.description.toLowerCase().includes(q) ||
         (bt.shortcut && bt.shortcut.toLowerCase().includes("/" + q))
     );
-  }, [slashQuery, scriptMode]);
+  }, [slashQuery, scriptMode, enableAi]);
+
+  /* ─── Filtered mention items ─── */
+  const filteredMentionItems = useMemo(() => {
+    if (!mentionQuery) return mentionItems.slice(0, 8);
+    const q = mentionQuery.toLowerCase();
+    return mentionItems.filter((m) => m.label.toLowerCase().includes(q)).slice(0, 8);
+  }, [mentionQuery, mentionItems]);
 
   /* ─── Block Operations ─── */
   const getBlocks = useCallback(() => {
@@ -522,37 +569,6 @@ export function DescriptionBlockEditor({
       if (!block) return;
       const el = blockRefs.current.get(blockId);
 
-      // ── Inline formatting keyboard shortcuts ──
-      const isMeta = e.metaKey || e.ctrlKey;
-      if (isMeta && !e.altKey) {
-        if (e.key === "b") {
-          e.preventDefault();
-          document.execCommand("bold");
-          return;
-        }
-        if (e.key === "i") {
-          e.preventDefault();
-          document.execCommand("italic");
-          return;
-        }
-        if (e.key === "e") {
-          e.preventDefault();
-          const sel = window.getSelection();
-          if (sel && !sel.isCollapsed) {
-            const range = sel.getRangeAt(0);
-            const code = document.createElement("code");
-            code.style.cssText = "background:var(--neutral-100);padding:1px 4px;border-radius:3px;font-family:'Courier Prime',monospace;font-size:0.9em";
-            range.surroundContents(code);
-          }
-          return;
-        }
-        if (e.shiftKey && (e.key === "s" || e.key === "S")) {
-          e.preventDefault();
-          document.execCommand("strikeThrough");
-          return;
-        }
-      }
-
       // Slash menu navigation
       if (slashMenuOpenRef.current && slashMenuBlockIdRef.current === blockId) {
         if (e.key === "ArrowDown") {
@@ -611,6 +627,47 @@ export function DescriptionBlockEditor({
         }
       }
 
+      // ── @Mention navigation ──
+      if (mentionOpenRef.current && mentionBlockId === blockId) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionIndex((i) => Math.min(i + 1, filteredMentionItems.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionIndex((i) => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === "Enter" && filteredMentionItems.length > 0) {
+          e.preventDefault();
+          const item = filteredMentionItems[mentionIndex];
+          if (item && el) {
+            // Replace @query with mention span
+            const text = readElText(el);
+            const atIdx = text.lastIndexOf("@");
+            if (atIdx !== -1) {
+              const before = text.substring(0, atIdx);
+              const after = text.substring(atIdx + 1 + mentionQuery.length);
+              const mentionHtml = `<span data-mention-id="${item.id}" data-mention-type="${item.type}" style="color:var(--accent-primary);font-weight:500;cursor:pointer" contenteditable="false">@${item.label}</span>`;
+              el.innerHTML = before + mentionHtml + after + "\u200B";
+              // Place cursor after mention
+              const s = window.getSelection();
+              if (s) { s.selectAllChildren(el); s.collapseToEnd(); }
+              debouncedContentUpdate(blockId, el.innerHTML);
+            }
+            setMentionOpen(false);
+            setMentionQuery("");
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setMentionOpen(false);
+          return;
+        }
+      }
+
       // ── Inline formatting shortcuts ──
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
         if (e.key === "b") {
@@ -632,6 +689,39 @@ export function DescriptionBlockEditor({
             code.style.cssText = "background:var(--neutral-100);padding:1px 4px;border-radius:3px;font-family:'Courier Prime',monospace;font-size:0.9em";
             range.surroundContents(code);
           }
+          return;
+        }
+        // Cmd+K — insert link
+        if (e.key === "k") {
+          e.preventDefault();
+          const sel = window.getSelection();
+          if (sel && !sel.isCollapsed) {
+            const selectedText = sel.toString();
+            const url = prompt("Enter URL:", "https://");
+            if (url) {
+              const range = sel.getRangeAt(0);
+              const link = document.createElement("a");
+              link.href = url;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.style.cssText = "color:var(--accent-primary);text-decoration:underline";
+              range.surroundContents(link);
+            }
+          } else {
+            const url = prompt("Enter URL:", "https://");
+            if (url) {
+              const linkText = prompt("Link text:", url) || url;
+              document.execCommand("insertHTML", false, `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);text-decoration:underline">${linkText}</a>`);
+            }
+          }
+          return;
+        }
+        // Cmd+D — duplicate current block
+        if (e.key === "d") {
+          e.preventDefault();
+          flushContentUpdate();
+          const dupBlock: DocBlock = { ...block, id: generateBlockId(), content: el ? readElText(el) : block.content };
+          insertBlockAfter(blockId, dupBlock);
           return;
         }
         // Cmd+/ — toggle slash menu
@@ -774,6 +864,7 @@ export function DescriptionBlockEditor({
           if (atStart) {
             const text = readElText(el);
             if (!text.trim()) {
+              // Empty block: revert to paragraph or delete
               if (block.type !== "paragraph") {
                 e.preventDefault();
                 changeBlockType(blockId, "paragraph");
@@ -782,6 +873,42 @@ export function DescriptionBlockEditor({
               e.preventDefault();
               deleteBlock(blockId);
               return;
+            }
+            // Non-empty block at cursor start: merge content into previous block
+            const idx = cur.findIndex((b) => b.id === blockId);
+            if (idx > 0) {
+              const prevBlock = cur[idx - 1];
+              // Only merge into text-content blocks (skip dividers, images, tables, etc.)
+              const nonMergeTypes: DocBlockType[] = ["divider", "image", "unsplash-image", "gallery", "embed", "table", "group-card"];
+              if (!nonMergeTypes.includes(prevBlock.type)) {
+                e.preventDefault();
+                const prevEl = blockRefs.current.get(prevBlock.id);
+                const prevText = prevEl ? readElText(prevEl) : prevBlock.content;
+                const cursorPos = prevText.length;
+                // Merge: append current text to previous block
+                flushContentUpdate();
+                updateBlock(prevBlock.id, { content: prevText + text });
+                // Delete current block
+                const next = cur.filter((b) => b.id !== blockId);
+                emitChange(next);
+                // Focus previous block and place cursor at merge point
+                requestAnimationFrame(() => {
+                  const mergedEl = blockRefs.current.get(prevBlock.id);
+                  if (mergedEl) {
+                    mergedEl.textContent = prevText + text;
+                    mergedEl.focus();
+                    const s = window.getSelection();
+                    if (s && mergedEl.firstChild) {
+                      const r = document.createRange();
+                      r.setStart(mergedEl.firstChild, Math.min(cursorPos, mergedEl.firstChild.textContent?.length || 0));
+                      r.collapse(true);
+                      s.removeAllRanges();
+                      s.addRange(r);
+                    }
+                  }
+                });
+                return;
+              }
             }
           }
         }
@@ -817,6 +944,25 @@ export function DescriptionBlockEditor({
             ? SCRIPT_CYCLE[(curIdx - 1 + SCRIPT_CYCLE.length) % SCRIPT_CYCLE.length]
             : SCRIPT_CYCLE[(curIdx + 1) % SCRIPT_CYCLE.length];
           changeBlockType(blockId, nextType);
+          return;
+        }
+        // Tab/Shift+Tab on list blocks: cycle list type (indent/outdent equivalent)
+        const LIST_TYPES: DocBlockType[] = ["bulleted-list", "numbered-list", "checklist"];
+        if (LIST_TYPES.includes(block.type)) {
+          const curListIdx = LIST_TYPES.indexOf(block.type);
+          if (e.shiftKey) {
+            // Shift+Tab on list: convert back to paragraph (outdent)
+            changeBlockType(blockId, "paragraph");
+          } else {
+            // Tab on list: cycle to next list type
+            const nextListType = LIST_TYPES[(curListIdx + 1) % LIST_TYPES.length];
+            changeBlockType(blockId, nextListType);
+          }
+          return;
+        }
+        // Tab on paragraph: convert to bulleted list (indent)
+        if (block.type === "paragraph") {
+          changeBlockType(blockId, "bulleted-list");
           return;
         }
         return;
@@ -868,7 +1014,8 @@ export function DescriptionBlockEditor({
     },
     [getBlocks, filteredSlashItems, slashMenuIndex, selectSlashItem, closeSlashMenu, openSlashMenu,
      updateBlock, insertBlockAfter, deleteBlock, changeBlockType, applyMarkdownShortcut,
-     autocompleteOpen, autocompleteBlockId, autocompleteItems, autocompleteIndex, scriptMode]
+     autocompleteOpen, autocompleteBlockId, autocompleteItems, autocompleteIndex, scriptMode,
+     flushContentUpdate, emitChange, mentionBlockId, filteredMentionItems, mentionIndex, mentionQuery, debouncedContentUpdate]
   );
 
   /* ─── Input Handler ─── */
@@ -928,11 +1075,31 @@ export function DescriptionBlockEditor({
       } else {
         if (autocompleteOpenRef.current) setAutocompleteOpen(false);
       }
+
+      // @Mention detection
+      if (mentionItems.length > 0) {
+        const atIdx = text.lastIndexOf("@");
+        if (atIdx !== -1) {
+          const afterAt = text.substring(atIdx + 1);
+          // Only trigger if the @ is at the start or preceded by a space, and no space in the query
+          const charBefore = atIdx > 0 ? text[atIdx - 1] : " ";
+          if ((charBefore === " " || charBefore === "\n" || atIdx === 0) && !afterAt.includes(" ") && afterAt.length < 30) {
+            setMentionOpen(true);
+            setMentionQuery(afterAt);
+            setMentionIndex(0);
+            setMentionBlockId(blockId);
+          } else {
+            if (mentionOpenRef.current) setMentionOpen(false);
+          }
+        } else {
+          if (mentionOpenRef.current) setMentionOpen(false);
+        }
+      }
       } catch (err) {
         console.error("[DescriptionBlockEditor] Error in handleBlockInput:", err);
       }
     },
-    [debouncedContentUpdate, openSlashMenu, closeSlashMenu, scriptMode, knownCharacters, knownLocations, getBlocks]
+    [debouncedContentUpdate, openSlashMenu, closeSlashMenu, scriptMode, knownCharacters, knownLocations, getBlocks, mentionItems]
   );
 
   /* ─── Paste handler ─── */
@@ -1274,11 +1441,28 @@ export function DescriptionBlockEditor({
         e.preventDefault();
         const allIds = new Set(safeBlocks.map((b) => b.id));
         setSelectedBlockIds(allIds);
+        return;
+      }
+      // Cmd/Ctrl+D while blocks are selected (not editing) → duplicate selected blocks
+      if (e.key === "d" && (e.metaKey || e.ctrlKey) && selectedBlockIds.size > 0 && !editingBlockId) {
+        e.preventDefault();
+        flushContentUpdate();
+        const cur = getBlocks();
+        const selectedInOrder = cur.filter((b) => selectedBlockIds.has(b.id));
+        const duplicates = selectedInOrder.map((b) => ({ ...b, id: generateBlockId() }));
+        // Insert duplicates after the last selected block
+        const lastSelected = selectedInOrder[selectedInOrder.length - 1];
+        const lastIdx = cur.findIndex((b) => b.id === lastSelected.id);
+        const next = [...cur];
+        next.splice(lastIdx + 1, 0, ...duplicates);
+        emitChange(next);
+        setSelectedBlockIds(new Set(duplicates.map((b) => b.id)));
+        toast.success(`Duplicated ${duplicates.length} block${duplicates.length > 1 ? "s" : ""}`);
       }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [selectedBlockIds.size, editingBlockId, handleDeleteSelected, safeBlocks]);
+  }, [selectedBlockIds.size, editingBlockId, handleDeleteSelected, safeBlocks, flushContentUpdate, getBlocks, emitChange]);
 
   return (
     <div ref={containerRef} className={`relative ${className}`} onMouseDown={handleMarqueeMouseDown}>
@@ -1355,6 +1539,8 @@ export function DescriptionBlockEditor({
               onNavigateDoc={onNavigateDoc}
               remoteUsers={getCollabsOnBlock(block.id, collaborators)}
               enableAi={enableAi}
+              onOpenLightbox={(images, index) => setLightbox({ images, index })}
+              allDocs={allDocs}
             />
           </div>
         ))}
@@ -1393,6 +1579,36 @@ export function DescriptionBlockEditor({
               }
             }}
             blockId={autocompleteBlockId}
+            blockRefs={blockRefs}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* @Mention dropdown */}
+      <AnimatePresence>
+        {mentionOpen && mentionBlockId && filteredMentionItems.length > 0 && (
+          <MentionMenu
+            items={filteredMentionItems}
+            activeIndex={mentionIndex}
+            onSelect={(item) => {
+              const el = blockRefs.current.get(mentionBlockId);
+              if (el) {
+                const text = readElText(el);
+                const atIdx = text.lastIndexOf("@");
+                if (atIdx !== -1) {
+                  const before = text.substring(0, atIdx);
+                  const after = text.substring(atIdx + 1 + mentionQuery.length);
+                  const mentionHtml = `<span data-mention-id="${item.id}" data-mention-type="${item.type}" style="color:var(--accent-primary);font-weight:500;cursor:pointer" contenteditable="false">@${item.label}</span>`;
+                  el.innerHTML = before + mentionHtml + after + "\u200B";
+                  const s = window.getSelection();
+                  if (s) { s.selectAllChildren(el); s.collapseToEnd(); }
+                  debouncedContentUpdate(mentionBlockId, el.innerHTML);
+                }
+                setMentionOpen(false);
+                setMentionQuery("");
+              }
+            }}
+            blockId={mentionBlockId}
             blockRefs={blockRefs}
           />
         )}
@@ -1457,6 +1673,17 @@ export function DescriptionBlockEditor({
           />
         )}
       </AnimatePresence>
+
+      {/* Gallery Lightbox */}
+      {lightbox && createPortal(
+        <GalleryLightbox
+          images={lightbox.images}
+          currentIndex={lightbox.index}
+          onClose={() => setLightbox(null)}
+          onNavigate={(idx) => setLightbox({ ...lightbox, index: idx })}
+        />,
+        document.body
+      )}
     </div>
   );
 }
@@ -1495,6 +1722,10 @@ interface BlockItemProps {
   remoteUsers?: CollabUser[];
   /** Whether AI features (rewrite) are enabled */
   enableAi?: boolean;
+  /** Open gallery lightbox */
+  onOpenLightbox?: (images: UnsplashImageMeta[], index: number) => void;
+  /** All docs for group-card link picker */
+  allDocs?: WorkspaceDoc[];
 }
 
 const BlockItem = memo(function BlockItem({
@@ -1525,6 +1756,8 @@ const BlockItem = memo(function BlockItem({
   onNavigateDoc,
   remoteUsers = [],
   enableAi = true,
+  onOpenLightbox,
+  allDocs = [],
 }: BlockItemProps) {
   const showControls = (hovered || focused) && !readOnly;
   const [rewriteOpen, setRewriteOpen] = useState(false);
@@ -1540,7 +1773,11 @@ const BlockItem = memo(function BlockItem({
       if (el && !el.hasAttribute("data-initialized")) {
         el.setAttribute("data-initialized", "1");
         if (block.content) {
-          el.textContent = block.content;
+          if (hasHtmlFormatting(block.content)) {
+            el.innerHTML = block.content;
+          } else {
+            el.textContent = block.content;
+          }
         }
         lastSyncedContent.current = block.content;
       }
@@ -1551,13 +1788,17 @@ const BlockItem = memo(function BlockItem({
   useEffect(() => {
     const el = editableRef.current;
     if (!el) return;
-    const domText = readElText(el);
+    const domContent = hasHtmlFormatting(block.content) ? readElHtml(el) : readElText(el);
     // Only overwrite the DOM if the incoming content differs from what's already displayed.
     // When the user is actively editing (el is focused), skip the overwrite to avoid
     // cursor jumps caused by the debounced content flush echoing stale text back.
-    if (block.content !== domText) {
+    if (block.content !== domContent) {
       if (document.activeElement !== el) {
-        el.textContent = block.content || "";
+        if (hasHtmlFormatting(block.content)) {
+          el.innerHTML = block.content || "";
+        } else {
+          el.textContent = block.content || "";
+        }
       }
     }
     lastSyncedContent.current = block.content;
@@ -1566,7 +1807,7 @@ const BlockItem = memo(function BlockItem({
   const handleInputWrapped = useCallback(() => {
     const el = editableRef.current;
     if (el) {
-      lastSyncedContent.current = readElText(el);
+      lastSyncedContent.current = readElHtml(el);
     }
     onInput();
   }, [onInput]);
@@ -1970,8 +2211,8 @@ const BlockItem = memo(function BlockItem({
             <div className="space-y-2">
               <div className={`grid gap-2 ${images.length === 1 ? "grid-cols-1" : images.length === 2 ? "grid-cols-2" : images.length === 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"}`}>
                 {images.map((img, i) => (
-                  <div key={img.id || i} className="rounded-[6px] overflow-hidden border relative group/img" style={{ borderColor: "var(--border-default)" }}>
-                    <img src={img.thumbUrl || img.url} alt="" className="w-full h-32 object-cover" />
+                  <div key={img.id || i} className="rounded-[6px] overflow-hidden border relative group/img cursor-pointer" style={{ borderColor: "var(--border-default)" }} onClick={() => onOpenLightbox?.(images, i)}>
+                    <img src={img.thumbUrl || img.url} alt="" className="w-full h-32 object-cover transition-transform hover:scale-105" />
                     <div
                       className="absolute bottom-0 inset-x-0 px-2 py-1 bg-gradient-to-t from-black/50 to-transparent"
                     >
@@ -2044,6 +2285,9 @@ const BlockItem = memo(function BlockItem({
             onChangeStyle={(style) => onUpdate({ cardStyle: style })}
             readOnly={readOnly}
             selected={selected}
+            availableDocs={allDocs.filter((d) => d.id !== block.linkedDocId)}
+            onLinkDoc={(docId) => onUpdate({ linkedDocId: docId })}
+            onUnlink={() => onUpdate({ linkedDocId: undefined })}
           />
         </div>
       </div>
@@ -2097,39 +2341,145 @@ const BlockItem = memo(function BlockItem({
 
   /* ═══ TOGGLE ═══ */
   if (block.type === "toggle") {
+    const hasChildren = block.children && block.children.length > 0;
     return (
       <div
-        className={`group relative flex items-start gap-1 py-0.5 rounded-[4px] ${isDragging ? "opacity-50" : ""} ${selected ? "px-2 -mx-2 ring-1 ring-[oklch(0.7_0.035_250_/_0.3)] bg-[oklch(0.85_0.025_250_/_0.1)]" : ""}`}
+        className={`group relative flex flex-col py-0.5 rounded-[4px] ${isDragging ? "opacity-50" : ""} ${selected ? "px-2 -mx-2 ring-1 ring-[oklch(0.7_0.035_250_/_0.3)] bg-[oklch(0.85_0.025_250_/_0.1)]" : ""}`}
         onMouseEnter={() => onHover(true)}
         onMouseLeave={() => onHover(false)}
         style={decorationStyle}
       >
-        {dragHandle}
-        <button
-          onClick={() => onUpdate({ collapsed: !block.collapsed })}
-          className="shrink-0 mt-[5px] mr-0.5 transition-transform"
-          style={{ color: "var(--text-tertiary)", transform: block.collapsed ? "rotate(0deg)" : "rotate(90deg)" }}
-        >
-          <CaretRight className="w-4 h-4" weight="bold" />
-        </button>
-        <div className="flex-1 relative min-w-0">
-          <RemoteBlockPresence usersOnBlock={remoteUsers} />
-          <div
-            ref={refCallback}
-            data-block-id={block.id}
-            contentEditable={!readOnly}
-            suppressContentEditableWarning
-            onInput={handleInputWrapped}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            onFocus={onFocus}
-            onBlur={onBlur}
-            data-placeholder={isEmpty ? "Toggle heading..." : undefined}
-            className={`outline-none w-full font-medium ${isEmpty ? "empty-block" : ""}`}
-            style={{ fontSize: "15px", color: "var(--text-primary)", lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "break-word", cursor: !isEditing && !readOnly ? "default" : undefined }}
-          />
-          {aiRewriteBtn}
+        <div className="flex items-start gap-1">
+          {dragHandle}
+          <button
+            onClick={() => onUpdate({ collapsed: !block.collapsed })}
+            className="shrink-0 mt-[5px] mr-0.5 transition-transform"
+            style={{ color: "var(--text-tertiary)", transform: block.collapsed ? "rotate(0deg)" : "rotate(90deg)" }}
+          >
+            <CaretRight className="w-4 h-4" weight="bold" />
+          </button>
+          <div className="flex-1 relative min-w-0">
+            <RemoteBlockPresence usersOnBlock={remoteUsers} />
+            <div
+              ref={refCallback}
+              data-block-id={block.id}
+              contentEditable={!readOnly}
+              suppressContentEditableWarning
+              onInput={handleInputWrapped}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              onFocus={onFocus}
+              onBlur={onBlur}
+              data-placeholder={isEmpty ? "Toggle heading..." : undefined}
+              className={`outline-none w-full font-medium ${isEmpty ? "empty-block" : ""}`}
+              style={{ fontSize: "15px", color: "var(--text-primary)", lineHeight: 1.6, whiteSpace: "pre-wrap", overflowWrap: "break-word", cursor: !isEditing && !readOnly ? "default" : undefined }}
+            />
+            {aiRewriteBtn}
+          </div>
         </div>
+        {/* Toggle children */}
+        {!block.collapsed && hasChildren && (
+          <div className="pl-7 mt-0.5 border-l-2" style={{ borderColor: "var(--border-default)", marginLeft: "10px" }}>
+            {block.children!.map((child, ci) => (
+              <div key={child.id} className="group/child flex items-start gap-1 py-0.5" style={{ fontSize: "14px", color: "var(--text-primary)", lineHeight: 1.6 }}>
+                {child.type === "checklist" && (
+                  <button
+                    className="shrink-0 mt-[2px]"
+                    style={{ color: child.checked ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+                    onClick={() => {
+                      const newChildren = [...(block.children || [])];
+                      newChildren[ci] = { ...child, checked: !child.checked };
+                      onUpdate({ children: newChildren });
+                    }}
+                  >
+                    {child.checked ? <CheckSquareOffset className="w-4 h-4" weight="fill" /> : <CheckSquare className="w-4 h-4" />}
+                  </button>
+                )}
+                {child.type === "bulleted-list" && (
+                  <span className="shrink-0 mt-[2px]" style={{ color: "var(--text-quaternary)" }}>&bull;</span>
+                )}
+                <div
+                  contentEditable={!readOnly}
+                  suppressContentEditableWarning
+                  className={`outline-none flex-1 min-w-0 ${child.checked ? "line-through opacity-50" : ""}`}
+                  style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}
+                  dangerouslySetInnerHTML={{ __html: child.content || "" }}
+                  onBlur={(e) => {
+                    const newContent = e.currentTarget.innerHTML;
+                    if (newContent !== child.content) {
+                      const newChildren = [...(block.children || [])];
+                      newChildren[ci] = { ...child, content: newContent };
+                      onUpdate({ children: newChildren });
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const newChild: DocBlock = { id: generateBlockId(), type: child.type, content: "", checked: child.type === "checklist" ? false : undefined };
+                      const newChildren = [...(block.children || [])];
+                      newChildren.splice(ci + 1, 0, newChild);
+                      onUpdate({ children: newChildren });
+                      requestAnimationFrame(() => {
+                        const container = e.currentTarget.closest(".border-l-2");
+                        if (container) {
+                          const editables = container.querySelectorAll("[contenteditable]");
+                          const next = editables[ci + 1] as HTMLElement;
+                          if (next) { next.focus(); }
+                        }
+                      });
+                    }
+                    if (e.key === "Backspace" && (e.currentTarget.textContent || "") === "" && (block.children || []).length > 1) {
+                      e.preventDefault();
+                      const newChildren = [...(block.children || [])];
+                      newChildren.splice(ci, 1);
+                      onUpdate({ children: newChildren });
+                    }
+                  }}
+                />
+                {!readOnly && (
+                  <button
+                    className="shrink-0 opacity-0 group-hover/child:opacity-100 transition-opacity p-0.5"
+                    style={{ color: "var(--text-quaternary)" }}
+                    onClick={() => {
+                      const newChildren = [...(block.children || [])];
+                      newChildren.splice(ci, 1);
+                      onUpdate({ children: newChildren.length > 0 ? newChildren : undefined });
+                    }}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+            {!readOnly && (
+              <button
+                className="flex items-center gap-1 py-1 px-1 mt-0.5 rounded transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                style={{ fontSize: "12px", color: "var(--text-quaternary)" }}
+                onClick={() => {
+                  const childType = block.children?.[0]?.type || "paragraph";
+                  const newChild: DocBlock = { id: generateBlockId(), type: childType as DocBlockType, content: "", checked: childType === "checklist" ? false : undefined };
+                  onUpdate({ children: [...(block.children || []), newChild] });
+                }}
+              >
+                <Plus className="w-3 h-3" /> Add item
+              </button>
+            )}
+          </div>
+        )}
+        {!block.collapsed && !hasChildren && !readOnly && (
+          <div className="pl-7 mt-0.5" style={{ marginLeft: "10px" }}>
+            <button
+              className="flex items-center gap-1 py-1 px-1 rounded transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+              style={{ fontSize: "12px", color: "var(--text-quaternary)" }}
+              onClick={() => {
+                const newChild: DocBlock = { id: generateBlockId(), type: "paragraph", content: "" };
+                onUpdate({ children: [newChild] });
+              }}
+            >
+              <Plus className="w-3 h-3" /> Add content
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -2206,8 +2556,118 @@ const BlockItem = memo(function BlockItem({
 });
 
 /* ═══════════════════════════════════════════════════════════
+   GALLERY LIGHTBOX
+   ═══════════════════════════════════════════════════════════ */
+
+function GalleryLightbox({
+  images,
+  currentIndex,
+  onClose,
+  onNavigate,
+}: {
+  images: UnsplashImageMeta[];
+  currentIndex: number;
+  onClose: () => void;
+  onNavigate: (index: number) => void;
+}) {
+  const img = images[currentIndex];
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < images.length - 1;
+
+  useEffect(() => {
+    const handler = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowLeft" && hasPrev) onNavigate(currentIndex - 1);
+      if (e.key === "ArrowRight" && hasNext) onNavigate(currentIndex + 1);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose, onNavigate, currentIndex, hasPrev, hasNext]);
+
+  if (!img) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)" }} />
+
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full flex items-center justify-center transition-colors hover:bg-white/20"
+        style={{ color: "white" }}
+      >
+        <X className="w-5 h-5" weight="bold" />
+      </button>
+
+      {/* Counter */}
+      {images.length > 1 && (
+        <div
+          className="absolute top-5 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full"
+          style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.85)", fontSize: "13px", fontWeight: 500 }}
+        >
+          {currentIndex + 1} of {images.length}
+        </div>
+      )}
+
+      {/* Prev button */}
+      {hasPrev && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex - 1); }}
+          className="absolute left-4 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-white/20"
+          style={{ color: "white", background: "rgba(0,0,0,0.4)" }}
+        >
+          <CaretRight className="w-5 h-5 rotate-180" weight="bold" />
+        </button>
+      )}
+
+      {/* Next button */}
+      {hasNext && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onNavigate(currentIndex + 1); }}
+          className="absolute right-4 z-20 w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-white/20"
+          style={{ color: "white", background: "rgba(0,0,0,0.4)" }}
+        >
+          <CaretRight className="w-5 h-5" weight="bold" />
+        </button>
+      )}
+
+      {/* Image */}
+      <img
+        src={img.url}
+        alt=""
+        className="relative z-10 max-w-[90vw] max-h-[80vh] rounded-[10px] shadow-2xl object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
+
+      {/* Photographer credit */}
+      <div
+        className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-full flex items-center gap-1.5"
+        style={{ background: "rgba(0,0,0,0.5)", color: "rgba(255,255,255,0.8)", fontSize: "12px" }}
+      >
+        Photo by{" "}
+        <a
+          href={img.photographerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-white transition-colors"
+          onClick={(e) => e.stopPropagation()}
+          style={{ color: "rgba(255,255,255,0.9)" }}
+        >
+          {img.photographer}
+        </a>
+        {" "}on Unsplash
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    TABLE BLOCK RENDERER
-   ════════════════════════════════════════════��══════════════ */
+   ══════════════════════════════════════════════════════════ */
 
 function TableBlockRenderer({
   block,
@@ -2229,6 +2689,25 @@ function TableBlockRenderer({
   dragHandle: React.ReactNode;
 }) {
   const table = block.tableData || { headers: ["Column 1", "Column 2"], rows: [["", ""]] };
+  const [sortCol, setSortCol] = useState<number | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+
+  const toggleSort = (colIdx: number) => {
+    if (sortCol !== colIdx) { setSortCol(colIdx); setSortDir("asc"); }
+    else if (sortDir === "asc") setSortDir("desc");
+    else { setSortCol(null); setSortDir(null); }
+  };
+
+  const sortedRows = useMemo(() => {
+    if (sortCol === null || sortDir === null) return table.rows;
+    return [...table.rows].sort((a, b) => {
+      const va = (a[sortCol] || "").toLowerCase();
+      const vb = (b[sortCol] || "").toLowerCase();
+      const numA = Number(va), numB = Number(vb);
+      if (!isNaN(numA) && !isNaN(numB)) return sortDir === "asc" ? numA - numB : numB - numA;
+      return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  }, [table.rows, sortCol, sortDir]);
 
   const updateCell = (rowIdx: number, colIdx: number, value: string) => {
     const newRows = table.rows.map((r, ri) =>
@@ -2298,14 +2777,24 @@ function TableBlockRenderer({
                     minWidth: "100px",
                   }}
                 >
-                  {readOnly ? h : (
-                    <input
-                      value={h}
-                      onChange={(e) => updateHeader(ci, e.target.value)}
-                      className="bg-transparent outline-none w-full"
-                      style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)" }}
-                    />
-                  )}
+                  <div className="flex items-center gap-1">
+                    {readOnly ? h : (
+                      <input
+                        value={h}
+                        onChange={(e) => updateHeader(ci, e.target.value)}
+                        className="bg-transparent outline-none flex-1"
+                        style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)" }}
+                      />
+                    )}
+                    <button
+                      onClick={() => toggleSort(ci)}
+                      className="shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors hover:bg-black/[0.06]"
+                      style={{ color: sortCol === ci ? "var(--accent-primary)" : "var(--text-quaternary)", fontSize: "10px" }}
+                      title={sortCol === ci && sortDir === "asc" ? "Sort descending" : sortCol === ci && sortDir === "desc" ? "Clear sort" : "Sort ascending"}
+                    >
+                      {sortCol === ci && sortDir === "asc" ? "▲" : sortCol === ci && sortDir === "desc" ? "▼" : "⇅"}
+                    </button>
+                  </div>
                   {!readOnly && showControls && table.headers.length > 1 && (
                     <button
                       onClick={() => removeColumn(ci)}
@@ -2320,14 +2809,14 @@ function TableBlockRenderer({
             </tr>
           </thead>
           <tbody>
-            {table.rows.map((row, ri) => (
+            {sortedRows.map((row, ri) => (
               <tr key={ri} className="group/row">
                 {row.map((cell, ci) => (
                   <td
                     key={ci}
                     className="px-3 py-1.5"
                     style={{
-                      borderBottom: ri < table.rows.length - 1 ? "1px solid var(--border-default)" : undefined,
+                      borderBottom: ri < sortedRows.length - 1 ? "1px solid var(--border-default)" : undefined,
                       borderRight: ci < row.length - 1 ? "1px solid var(--border-default)" : undefined,
                       fontSize: "13px",
                       color: "var(--text-primary)",
@@ -2336,7 +2825,11 @@ function TableBlockRenderer({
                     {readOnly ? cell : (
                       <input
                         value={cell}
-                        onChange={(e) => updateCell(ri, ci, e.target.value)}
+                        onChange={(e) => {
+                          /* Find actual row index in unsorted data when sort is active */
+                          const actualRi = sortCol !== null ? table.rows.indexOf(row) : ri;
+                          updateCell(actualRi >= 0 ? actualRi : ri, ci, e.target.value);
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Tab") {
                             e.preventDefault();
@@ -2356,10 +2849,10 @@ function TableBlockRenderer({
                     )}
                   </td>
                 ))}
-                {!readOnly && showControls && table.rows.length > 1 && (
+                {!readOnly && showControls && sortedRows.length > 1 && (
                   <td className="w-6">
                     <button
-                      onClick={() => removeRow(ri)}
+                      onClick={() => { const actualRi = sortCol !== null ? table.rows.indexOf(row) : ri; removeRow(actualRi >= 0 ? actualRi : ri); }}
                       className="p-0.5 rounded opacity-0 group-hover/row:opacity-100 transition-opacity"
                       style={{ color: "var(--text-quaternary)" }}
                     >
@@ -2509,7 +3002,7 @@ function EmbedBlockRenderer({
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════���══
    SLASH COMMAND MENU
    ═══════════════════════════════════════════════════════════ */
 
@@ -2544,7 +3037,7 @@ function SlashMenu({
   }, [blockId, blockRefs]);
 
   useEffect(() => {
-    const activeEl = menuRef.current?.children[activeIndex] as HTMLElement;
+    const activeEl = menuRef.current?.querySelector(`[data-slash-idx="${activeIndex}"]`) as HTMLElement;
     if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
@@ -2561,7 +3054,7 @@ function SlashMenu({
         top: pos.top,
         left: pos.left,
         background: "var(--surface-bg)",
-        borderColor: "#e8ebf1",
+        borderColor: "var(--border-default)",
       }}
       initial={{ opacity: 0, y: -4, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2582,6 +3075,7 @@ function SlashMenu({
               </div>
             )}
             <button
+              data-slash-idx={i}
               onMouseDown={(e) => {
                 e.preventDefault();
                 onSelect(item);
@@ -2695,6 +3189,114 @@ function AutocompleteMenu({
           >
             {item}
           </span>
+        </button>
+      ))}
+    </motion.div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   @MENTION MENU
+   ═══════════════════════════════════════════════════════════ */
+
+function MentionMenu({
+  items,
+  activeIndex,
+  onSelect,
+  blockId,
+  blockRefs,
+}: {
+  items: MentionItem[];
+  activeIndex: number;
+  onSelect: (item: MentionItem) => void;
+  blockId: string;
+  blockRefs: React.MutableRefObject<Map<string, HTMLElement>>;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    const el = blockRefs.current.get(blockId);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const containerRect = el.closest(".relative")?.getBoundingClientRect();
+      if (containerRect) {
+        setPos({
+          top: rect.bottom - containerRect.top + 4,
+          left: rect.left - containerRect.left,
+        });
+      }
+    }
+  }, [blockId, blockRefs]);
+
+  useEffect(() => {
+    const activeEl = menuRef.current?.querySelector(`[data-idx="${activeIndex}"]`) as HTMLElement;
+    if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  if (items.length === 0) return null;
+
+  const MENTION_TYPE_COLORS: Record<string, string> = {
+    person: "#3B82F6",
+    project: "#8B5CF6",
+    task: "#22C55E",
+  };
+
+  return (
+    <motion.div
+      ref={menuRef}
+      className="absolute z-50 w-64 max-h-56 overflow-y-auto rounded-[10px] shadow-lg border py-1"
+      style={{
+        top: pos.top,
+        left: pos.left,
+        background: "var(--surface-bg)",
+        borderColor: "var(--border-default)",
+      }}
+      initial={{ opacity: 0, y: -4, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -4, scale: 0.98 }}
+      transition={{ duration: 0.1 }}
+    >
+      <div
+        className="px-3 py-1"
+        style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-quaternary)", letterSpacing: "0.04em", textTransform: "uppercase" }}
+      >
+        Mentions
+      </div>
+      {items.map((item, i) => (
+        <button
+          key={item.id}
+          data-idx={i}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onSelect(item);
+          }}
+          className={`flex items-center gap-2.5 w-full px-3 py-2 text-left transition-colors ${
+            i === activeIndex ? "bg-black/[0.05] dark:bg-white/[0.05]" : ""
+          } hover:bg-black/[0.04] dark:hover:bg-white/[0.04]`}
+        >
+          <div
+            className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-white"
+            style={{
+              background: item.color || MENTION_TYPE_COLORS[item.type] || "#64748B",
+              fontSize: "11px",
+              fontWeight: 600,
+            }}
+          >
+            {item.avatarUrl ? (
+              <img src={item.avatarUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
+            ) : (
+              item.label.charAt(0).toUpperCase()
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-primary)" }} className="truncate">
+              {item.label}
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--text-quaternary)" }}>
+              {item.type}
+            </div>
+          </div>
         </button>
       ))}
     </motion.div>

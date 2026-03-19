@@ -164,7 +164,7 @@ export function useNotificationPolling() {
         // Silently ignore abort/signal errors — they happen naturally during
         // component unmount or when the page is backgrounded
         const lowerError = error.toLowerCase();
-        if (lowerError.includes("abort") || lowerError.includes("signal") || lowerError.includes("failed to fetch")) {
+        if (lowerError.includes("abort") || lowerError.includes("signal") || lowerError.includes("failed to fetch") || lowerError.includes("timeout")) {
           // Backoff on network errors but don't spam console
           consecutiveFailsRef.current++;
           currentIntervalRef.current = Math.min(

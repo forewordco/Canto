@@ -6,10 +6,10 @@
 import { getSupabaseClient, getAnonKey, getSupabaseUrl, readStoredSession } from "./supabase";
 
 /** Maximum number of retries on network errors */
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 
 /** Base delay in ms for exponential backoff */
-const BASE_DELAY = 500;
+const BASE_DELAY = 800;
 
 /** Edge function path */
 const EDGE_FN_PATH = "/functions/v1/make-server-a038f2e0";
@@ -47,10 +47,27 @@ function isAbortError(error: unknown): boolean {
 }
 
 /**
+ * Check if the abort was a timeout (retryable) vs user-initiated (not retryable).
+ */
+function isTimeoutAbort(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    // Our timeout abort passes "timeout" as the reason
+    return (error as any).message?.includes("timeout") || String(error).includes("timeout");
+  }
+  if (error instanceof TypeError) {
+    const msg = error.message.toLowerCase();
+    return msg.includes("aborted") || msg.includes("abort");
+  }
+  return false;
+}
+
+/**
  * Check if an error is a retryable network error.
  */
 function isRetryableError(error: unknown): boolean {
-  // Abort errors are NOT retryable — they mean the request was intentionally cancelled
+  // Timeout aborts ARE retryable
+  if (isTimeoutAbort(error)) return true;
+  // Other abort errors are NOT retryable — they mean the request was intentionally cancelled
   if (isAbortError(error)) return false;
   if (error instanceof TypeError) {
     const msg = error.message.toLowerCase();
@@ -148,9 +165,9 @@ export async function apiCall<T = unknown>(
     try {
       await waitForServer();
     } catch {
-      // Proceed anyway — the request itself will surface the error
+      // Reset so the next call re-attempts the health check
+      _serverReadyPromise = null;
     }
-    _serverConfirmedReady = true;
   }
 
   let lastError: string = "Unknown error";
@@ -174,7 +191,7 @@ export async function apiCall<T = unknown>(
 
       // Create abort controller for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const timeoutId = setTimeout(() => controller.abort("timeout"), timeout);
 
       const response = await fetch(buildUrl(route), {
         method,
@@ -268,8 +285,8 @@ export function waitForServer(): Promise<void> {
   if (_serverReadyPromise) return _serverReadyPromise;
 
   _serverReadyPromise = (async () => {
-    const MAX_HEALTH_ATTEMPTS = 10;
-    const HEALTH_BASE_DELAY = 600;
+    const MAX_HEALTH_ATTEMPTS = 15;
+    const HEALTH_BASE_DELAY = 800;
 
     for (let i = 0; i < MAX_HEALTH_ATTEMPTS; i++) {
       try {
@@ -287,8 +304,8 @@ export function waitForServer(): Promise<void> {
         if (response.ok) {
           console.log(`[API] Server ready (attempt ${i + 1})`);
           _serverConfirmedReady = true;
-          // Small buffer to let all routes finish registering after health responds
-          await sleep(150);
+          // Buffer to let all routes finish registering after health responds
+          await sleep(300);
           return;
         }
       } catch {

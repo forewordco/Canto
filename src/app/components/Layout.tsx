@@ -73,6 +73,7 @@ import { GlobalTaskDetailProvider } from "./GlobalTaskDetail";
 import { DragProvider, useDrag, getDragData, hasDragData, formatMention, type DragPayload } from "../lib/drag-context";
 import { ProjectPage } from "./ProjectPage";
 import { ProjectsOverview } from "./ProjectsOverview";
+import HomePage from "./HomePage";
 import {
   HomePageSkeleton,
   ProjectPageSkeleton,
@@ -175,7 +176,6 @@ const OriginalProject = lazyRetry(() => import("./brand-guide/OriginalProject"),
 const BuildPlan = lazyRetry(() => import("./brand-guide/BuildPlan"), "BuildPlan");
 
 /* ─── Lazy-loaded App Pages ─── */
-const HomePage = lazyRetry(() => import("./HomePage"), "default");
 const DocsPage = lazyRetry(() => import("./DocsPage"), "DocsPage");
 const CalendarPage = lazyRetry(() => import("./CalendarPage"), "CalendarPage");
 const WeekViewPage = lazyRetry(() => import("./WeekViewPage"), "WeekViewPage");
@@ -372,9 +372,7 @@ function AppPage({ nav }: { nav: NavId }) {
   if (nav === "home") {
     return (
       <ErrorBoundary section="Home">
-        <Suspense fallback={<HomePageSkeleton />}>
-          <HomePage />
-        </Suspense>
+        <HomePage />
       </ErrorBoundary>
     );
   }

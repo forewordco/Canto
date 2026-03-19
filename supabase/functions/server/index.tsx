@@ -74,12 +74,15 @@ async function getAuthUser(c: any): Promise<{ id: string; email: string } | null
       }
       return { id: user.id, email: user.email || "" };
     } catch (err) {
+      const errStr = String(err).toLowerCase();
       const isTransient =
-        String(err).includes("connection reset") ||
-        String(err).includes("connection error") ||
-        String(err).includes("ECONNRESET") ||
-        String(err).includes("SendRequest") ||
-        String(err).includes("tcp connect error");
+        errStr.includes("connection reset") ||
+        errStr.includes("connection error") ||
+        errStr.includes("econnreset") ||
+        errStr.includes("sendrequest") ||
+        errStr.includes("tcp connect error") ||
+        errStr.includes("os error 104") ||
+        errStr.includes("broken pipe");
       if (isTransient && attempt < maxRetries - 1) {
         console.log(`[Auth] getAuthUser transient error (attempt ${attempt + 1}/${maxRetries}), retrying: ${err}`);
         await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
@@ -2403,4 +2406,4 @@ app.all("*", (c) => {
   return c.json({ error: `Route not found: ${c.req.method} ${c.req.path}` }, 404);
 });
 
-Deno.serve((req) => app.fetch(req));
+Deno.serve(app.fetch);

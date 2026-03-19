@@ -542,45 +542,32 @@ export function ChatPage({ panelMode = false }: { panelMode?: boolean }) {
                 <ChatCircle size={22} weight="fill" style={{ color: "var(--accent-primary)" }} />
                 <h1 className="text-[18px] font-bold" style={{ color: "var(--text-primary)" }}>Chat</h1>
               </div>
-              <button
-                onClick={() => { setShowNewChat(true); haptic("light"); }}
-                className="w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.05]"
-                style={{ color: "var(--text-tertiary)" }}
-                title="New conversation"
-              >
-                <Plus size={18} weight="bold" />
-              </button>
-            </div>
-          )}
-          {/* Panel mode: compact new-chat button row */}
-          {panelMode && (
-            <div className="flex items-center justify-end px-3 py-1.5 shrink-0">
-              <button
-                onClick={() => { setShowNewChat(true); haptic("light"); }}
-                className="w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.05]"
-                style={{ color: "var(--text-tertiary)" }}
-                title="New conversation"
-              >
-                <Plus size={16} weight="bold" />
-              </button>
             </div>
           )}
 
-          {/* Search */}
-          <div className="px-3 py-2">
+          {/* Search + New chat row */}
+          <div className="flex items-center gap-2 px-3 pt-2 pb-1 shrink-0">
             <div
-              className="flex items-center gap-2 px-3 h-[36px] rounded-[8px]"
+              className="flex items-center gap-2 px-3 h-[36px] rounded-[8px] flex-1 min-w-0"
               style={{ background: "var(--neutral-100)" }}
             >
-              <MagnifyingGlass size={15} style={{ color: "var(--text-quaternary)" }} />
+              <MagnifyingGlass size={15} className="shrink-0" style={{ color: "var(--text-quaternary)" }} />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search conversations…"
-                className="flex-1 bg-transparent outline-none text-[13px]"
+                className="flex-1 bg-transparent outline-none text-[13px] min-w-0"
                 style={{ color: "var(--text-primary)" }}
               />
             </div>
+            <button
+              onClick={() => { setShowNewChat(true); haptic("light"); }}
+              className="w-[28px] h-[28px] rounded-full flex items-center justify-center shrink-0 transition-colors hover:bg-black/[0.05] dark:hover:bg-white/[0.05]"
+              style={{ color: "var(--text-tertiary)" }}
+              title="New conversation"
+            >
+              <Plus size={16} weight="bold" />
+            </button>
           </div>
 
           {/* ── Pinned conversations (avatar circles) ── */}
@@ -642,19 +629,6 @@ export function ChatPage({ panelMode = false }: { panelMode?: boolean }) {
               </div>
             );
           })()}
-
-          {/* Archive toggle */}
-          {archivedConvs.length > 0 && (
-            <button
-              onClick={() => setShowArchived(!showArchived)}
-              className="flex items-center gap-2 w-full px-4 py-2 text-[12px] font-medium transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
-              style={{ color: "var(--text-quaternary)", borderBottom: "1px solid var(--border-default)" }}
-            >
-              <Archive size={14} />
-              {showArchived ? "Back to active" : `Archived (${archivedConvs.length})`}
-              <CaretDown size={10} className={`ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`} />
-            </button>
-          )}
 
           {/* Conversation items */}
           <div className="flex-1 overflow-y-auto">
@@ -737,7 +711,7 @@ export function ChatPage({ panelMode = false }: { panelMode?: boolean }) {
                             {other.name}
                           </span>
                           {isMuted && <BellSlash size={12} style={{ color: "var(--text-quaternary)" }} />}
-                          {isPinned && <PushPin size={11} weight="fill" style={{ color: "var(--text-quaternary)" }} />}
+                          {isPinned && <PushPin size={11} weight="fill" className="rotate-45" style={{ color: "var(--text-quaternary)" }} />}
                         </span>
                         <span
                           className="text-[11px] shrink-0 tabular-nums"
@@ -771,6 +745,19 @@ export function ChatPage({ panelMode = false }: { panelMode?: boolean }) {
               })
             )}
           </div>
+
+          {/* Archive toggle — pinned to bottom */}
+          {archivedConvs.length > 0 && (
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className="flex items-center gap-2 w-full px-4 py-2.5 text-[12px] font-medium shrink-0 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03] border-t"
+              style={{ color: "var(--text-quaternary)", borderColor: "var(--border-default)" }}
+            >
+              <Archive size={14} />
+              {showArchived ? "Back to active" : `Archived (${archivedConvs.length})`}
+              <CaretDown size={10} className={`ml-auto transition-transform ${showArchived ? "rotate-180" : ""}`} />
+            </button>
+          )}
         </div>
 
         {/* ── Message Thread ── */}
@@ -1281,7 +1268,7 @@ function MessageThread({
               style={{ color: showPinnedPanel ? "var(--accent-primary)" : "var(--text-tertiary)" }}
               title="Pinned messages"
             >
-              <PushPin size={13} weight={showPinnedPanel ? "fill" : "regular"} />
+              <PushPin size={13} weight={showPinnedPanel ? "fill" : "regular"} className="rotate-45" />
               <span>{pinnedMessages.length}</span>
             </button>
           )}
@@ -1305,7 +1292,7 @@ function MessageThread({
           <div className="px-4 py-2">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
-                <PushPin size={13} weight="fill" style={{ color: "var(--accent-primary)" }} />
+                <PushPin size={13} weight="fill" className="rotate-45" style={{ color: "var(--accent-primary)" }} />
                 <span className="text-[12px] font-semibold" style={{ color: "var(--text-secondary)" }}>
                   Pinned Messages ({pinnedMessages.length})
                 </span>
