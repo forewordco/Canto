@@ -1376,7 +1376,7 @@ export function ProjectResources({
   const imageAddAtt = imageAddId ? attachments.find((a) => a.id === imageAddId) : null;
 
   return (
-    <div className="px-[32px] pb-5">
+    <div className="pb-5">
       <h3
         className="mb-[7px]"
         style={{ color: COLORS.text3, fontSize: "12px", fontWeight: 600, letterSpacing: "0.04em" }}

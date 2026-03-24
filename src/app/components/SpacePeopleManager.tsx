@@ -1,8 +1,8 @@
 /* ═══════════════════════════════════════════════════════════
-   SPACE PEOPLE MANAGER — Modal for managing Members,
-   Clients, and Viewers within a Space.
+   SPACE PEOPLE MANAGER — Modal for managing Admins,
+   Members, and Viewers within a Space.
 
-   Three tabs: Members, Clients, Viewers.
+   Three tabs: Admins, Members, Viewers.
    Each tab has an add form (name + email) and a list of
    existing people with remove/edit/role-switch capabilities.
    Uses spaceId + live data from useData() to avoid stale props.
@@ -15,7 +15,7 @@ import {
   Trash,
   User,
   UsersThree,
-  Briefcase,
+  ShieldCheck,
   Eye,
   EnvelopeSimple,
   PencilSimple,
@@ -48,20 +48,20 @@ const ROLE_TABS: {
   color: string;
 }[] = [
   {
+    role: "admin",
+    label: "Admins",
+    singularLabel: "admin",
+    icon: ShieldCheck,
+    description: "Admin-level access with elevated permissions",
+    color: "oklch(0.7 0.15 155)",
+  },
+  {
     role: "member",
     label: "Members",
     singularLabel: "member",
     icon: UsersThree,
-    description: "Full access to projects, tasks, and docs in this space",
+    description: "Standard access to projects, tasks, and docs in this space",
     color: "oklch(0.65 0.16 250)",
-  },
-  {
-    role: "client",
-    label: "Clients",
-    singularLabel: "client",
-    icon: Briefcase,
-    description: "Can view deliverables and leave comments",
-    color: "oklch(0.7 0.15 155)",
   },
   {
     role: "viewer",
@@ -596,7 +596,7 @@ export function SpacePeopleManager({
   onClose: () => void;
 }) {
   const { spaces, updateSpace } = useData();
-  const [activeTab, setActiveTab] = useState<SpacePersonRole>("member");
+  const [activeTab, setActiveTab] = useState<SpacePersonRole>("admin");
   const [search, setSearch] = useState("");
 
   // Live space data from context — avoids stale props
@@ -609,8 +609,8 @@ export function SpacePeopleManager({
     (role: SpacePersonRole): SpacePerson[] => {
       if (!space) return [];
       switch (role) {
+        case "admin": return space.admins || [];
         case "member": return space.members || [];
-        case "client": return space.clients || [];
         case "viewer": return space.viewers || [];
       }
     },
@@ -618,7 +618,7 @@ export function SpacePeopleManager({
   );
 
   const roleKey = (role: SpacePersonRole) =>
-    role === "member" ? "members" : role === "client" ? "clients" : "viewers";
+    role === "admin" ? "admins" : role === "member" ? "members" : "viewers";
 
   const { profile, user } = useAuth();
   const inviterName = profile?.displayName || user?.user_metadata?.name || "A teammate";
@@ -711,7 +711,7 @@ export function SpacePeopleManager({
   if (!space) return null;
 
   const totalPeople =
-    (space.members?.length || 0) + (space.clients?.length || 0) + (space.viewers?.length || 0);
+    (space.admins?.length || 0) + (space.members?.length || 0) + (space.viewers?.length || 0);
 
   const activeTabConfig = ROLE_TABS.find((t) => t.role === activeTab)!;
   const people = getPeopleForRole(activeTab);

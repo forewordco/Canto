@@ -342,7 +342,7 @@ export interface TagDef {
 
 /* ─── Spaces ─── */
 
-export type SpacePersonRole = "member" | "client" | "viewer";
+export type SpacePersonRole = "admin" | "member" | "viewer";
 export type SpaceMemberRole = "super-admin" | "admin" | "member";
 
 export interface SpacePerson {
@@ -361,13 +361,14 @@ export interface SpacePerson {
   invitedAt?: string;
 }
 
-export interface SpaceTeam {
+export interface SpaceGroup {
   id: string;
   name: string;
   color: string;
+  type: "team" | "client";
   phosphorIcon?: string;
   description?: string;
-  /** Person IDs from the space's members/clients/viewers */
+  /** Person IDs from the space's admins/members/viewers */
   personIds: string[];
   createdAt: string;
 }
@@ -385,10 +386,10 @@ export interface Space {
   createdAt: string;
   /** Auth user ID of the space creator (always super-admin) */
   creatorId?: string;
+  admins?: SpacePerson[];
   members?: SpacePerson[];
-  clients?: SpacePerson[];
   viewers?: SpacePerson[];
-  teams?: SpaceTeam[];
+  groups?: SpaceGroup[];
 }
 
 /* ─── Projects ─── */
@@ -542,22 +543,51 @@ export interface NotificationItem {
 /* ─── Time Blocks (Week View) ─── */
 
 export interface TimeBlock {
+  id: string;                    // "tb-<timestamp>-<random>"
+  taskId: string;                // Task ID (empty string for personal blocks)
+  projectName: string;           // Project identifier (or "Personal")
+  customTitle?: string;          // Custom title for personal/ad-hoc blocks
+  blockColor?: string;           // Hex color for personal blocks
+  dateStr: string;               // "YYYY-MM-DD" (persisted absolute date)
+  dayIndex: number;              // 0-3 or 0-4 (Mon-Thu/Fri), computed at render time
+  startHour: number;             // 0-23
+  startMinute: number;           // 0 or 30
+  durationMinutes: number;       // 30, 60, 90, etc.
+  isCarryForward?: boolean;      // Virtual carry-forward (not persisted)
+  carryForwardOf?: string;       // Original block ID (not persisted)
+}
+
+export interface TimeBlockSaved {
   id: string;
-  dayIndex: number; // 0-6
+  taskId: string;
+  projectName: string;
+  customTitle?: string;
+  blockColor?: string;
+  dateStr: string;
   startHour: number;
-  endHour: number;
-  taskId?: string;
-  taskTitle?: string;
-  projectName?: string;
-  color?: string;
-  notes?: string;
+  startMinute: number;
+  durationMinutes: number;
+}
+
+export interface CalEventBlock {
+  id: string;
+  summary: string;
+  dateStr: string;
+  startHour: number;
+  startMinute: number;
+  durationMinutes: number;
+  dayIndex: number;
+  location?: string;
+  htmlLink?: string;
+  colorId?: string;
 }
 
 export interface WeekSettings {
-  workingHoursStart: number; // e.g. 9
-  workingHoursEnd: number; // e.g. 17
-  hiddenDays: number[]; // e.g. [0, 6] for weekends
-  notepad?: string;
+  gridStartHour?: number;       // Default: 8 (8am)
+  gridEndHour?: number;         // Default: 17 (5pm)
+  notepadText?: string;         // Free-form scratch pad
+  dayCount?: 4 | 5;             // 4 = Mon-Thu, 5 = Mon-Fri (default: 4)
+  showStats?: boolean;          // Show weekly stats bar (default: true)
 }
 
 /* ─── Workspace Documents ─── */

@@ -35,6 +35,21 @@ class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("[Canto] React Error Boundary caught:", error, errorInfo);
     this.setState({ errorInfo });
+
+    // Auto-recover from stale dynamic import errors
+    const isDynImportErr =
+      error?.message?.includes("Failed to fetch dynamically imported module") ||
+      error?.message?.includes("error loading dynamically imported module");
+    if (isDynImportErr) {
+      const reloadKey = "eb_reload_AppInner";
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, "1");
+        console.warn("[Canto] ErrorBoundary: auto-reloading for stale module");
+        setTimeout(() => window.location.reload(), 500);
+      } else {
+        sessionStorage.removeItem(reloadKey);
+      }
+    }
   }
 
   render() {
@@ -200,10 +215,34 @@ function LoadingScreen() {
 
 /* ─── Lazy AppInner ─── */
 
-const LazyAppInner = lazy(() => import("./AppInner").catch((err) => {
-  console.error("[Canto] Failed to load AppInner:", err);
-  throw err;
-}));
+function importWithRetry(retries = 3, delay = 1000): Promise<{ default: React.ComponentType<any> }> {
+  return import("./AppInner").catch((err) => {
+    if (retries <= 0) {
+      const isDynImportErr =
+        err?.message?.includes("Failed to fetch dynamically imported module") ||
+        err?.message?.includes("error loading dynamically imported module");
+      if (isDynImportErr) {
+        const reloadKey = "lazyRetry_reload_AppInner";
+        if (!sessionStorage.getItem(reloadKey)) {
+          sessionStorage.setItem(reloadKey, "1");
+          console.warn("[Canto] Forcing page reload for stale AppInner module");
+          window.location.reload();
+          // Return a never-resolving promise to prevent error flash during reload
+          return new Promise(() => {});
+        }
+        sessionStorage.removeItem(reloadKey);
+      }
+      console.error("[Canto] Failed to load AppInner after retries:", err);
+      throw err;
+    }
+    console.warn(`[Canto] AppInner import failed, retrying (${retries} left)...`);
+    return new Promise((resolve) =>
+      setTimeout(() => resolve(importWithRetry(retries - 1, delay)), delay)
+    );
+  });
+}
+
+const LazyAppInner = lazy(() => importWithRetry());
 
 function AppInnerLoader() {
   const [ready, setReady] = useState(false);

@@ -30,7 +30,7 @@ import {
   Flag,
   Eye,
   Sun,
-  Queue,
+  SkipForward,
   FilmSlate,
   YoutubeLogo,
   Suitcase,
@@ -51,6 +51,8 @@ import {
   Palette,
   NotePencil,
   X,
+  CheckSquare,
+  Square as SquareIcon,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
 import { useData } from "../lib/data";
@@ -70,6 +72,7 @@ import {
   type ProjectStatus,
   type TeamMemberInfo,
   type TimelineDate,
+  type SubTask,
 } from "../lib/types";
 import { toast } from "sonner";
 import { PhosphorIconPicker, getPhosphorIcon } from "./PhosphorIconPicker";
@@ -268,6 +271,279 @@ function StatusBadge({
   );
 }
 
+/* ── Subtask Row — full-featured like a task, square checkbox ── */
+
+function SubtaskRow({
+  sub,
+  taskId,
+  teamMembers,
+  onUpdate,
+  onClick,
+  onToggleToday,
+  onToggleLineup,
+}: {
+  sub: SubTask;
+  taskId: string;
+  teamMembers: TeamMemberInfo[];
+  onUpdate: (updates: Partial<SubTask>) => void;
+  onClick: () => void;
+  onToggleToday?: () => void;
+  onToggleLineup?: () => void;
+}) {
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const assigneeRef = useRef<HTMLDivElement>(null);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dateInputValue, setDateInputValue] = useState("");
+  const datePickerRef = useRef<HTMLDivElement>(null);
+  const dateBtnRef = useRef<HTMLButtonElement>(null);
+  const assigneeBtnRef = useRef<HTMLButtonElement>(null);
+  const datePortalRef = useRef<HTMLDivElement>(null);
+  const assigneePortalRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [assigneePos, setAssigneePos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (!assigneeOpen && !datePickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (assigneeOpen && assigneeRef.current && !assigneeRef.current.contains(t) && (!assigneePortalRef.current || !assigneePortalRef.current.contains(t))) setAssigneeOpen(false);
+      if (datePickerOpen && datePickerRef.current && !datePickerRef.current.contains(t) && (!datePortalRef.current || !datePortalRef.current.contains(t))) setDatePickerOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [assigneeOpen, datePickerOpen]);
+
+  const assigneeMember = sub.assignee ? teamMembers.find((m) => m.userId === sub.assignee) : null;
+  const assigneeInitial = assigneeMember ? assigneeMember.displayName.charAt(0).toUpperCase() : null;
+  const assigneeColor = assigneeMember?.avatarColor || c.coral;
+  const assigneePhoto = assigneeMember?.avatarUrl || null;
+
+  return (
+    <div
+      className="group/sub flex items-center gap-2 pl-8 pr-1 py-[5px] transition-colors hover:bg-black/[0.02] cursor-pointer"
+      style={{ borderBottom: `1px solid ${c.borderLight}` }}
+      onClick={onClick}
+    >
+      {/* Square checkbox */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onUpdate({ completed: !sub.completed });
+        }}
+        className="shrink-0 w-[18px] h-[18px] flex items-center justify-center"
+      >
+        {sub.completed ? (
+          <CheckSquare weight="fill" size={18} style={{ color: c.green, opacity: 0.55 }} />
+        ) : (
+          <SquareIcon
+            size={18}
+            weight="regular"
+            style={{ color: c.checkHover }}
+            className="group-hover/sub:!text-[oklch(0.7_0.18_25)]"
+          />
+        )}
+      </button>
+
+      {/* Title */}
+      <span
+        className="truncate flex-1"
+        style={{
+          color: sub.completed ? c.text4 : c.text2,
+          fontSize: "12.5px",
+          fontWeight: sub.completed ? 400 : 450,
+          textDecoration: sub.completed ? "line-through" : "none",
+        }}
+      >
+        {sub.title}
+      </span>
+
+      {/* Spacer */}
+      <div className="flex-1 min-w-0" />
+
+      {/* Date picker */}
+      <div className="shrink-0" ref={datePickerRef} onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={dateBtnRef}
+          onClick={() => {
+            if (!datePickerOpen && dateBtnRef.current) {
+              const r = dateBtnRef.current.getBoundingClientRect();
+              setDropdownPos({ top: r.bottom + 4, left: r.right });
+            }
+            setDatePickerOpen(!datePickerOpen);
+            if (sub.date) {
+              try { setDateInputValue(new Date(sub.date).toISOString().split("T")[0]); } catch { setDateInputValue(""); }
+            } else {
+              setDateInputValue(new Date().toISOString().split("T")[0]);
+            }
+          }}
+          className="inline-flex items-center gap-1 px-1 py-0.5 rounded hover:bg-black/[0.05] transition-colors"
+          title={sub.date ? "Change due date" : "Set due date"}
+        >
+          {sub.date ? (
+            <span style={{ color: c.text4, fontSize: "11px" }}>{formatShortDate(sub.date)}</span>
+          ) : (
+            <CalendarBlank size={12} style={{ color: "oklch(0.82 0.01 260)", opacity: 0.5 }} className="opacity-0 group-hover/sub:opacity-100 transition-opacity" />
+          )}
+        </button>
+        {datePickerOpen && createPortal(
+          <div
+            className="fixed z-[9999] p-2 rounded-[8px] min-w-[180px]"
+            style={{ top: dropdownPos.top, left: dropdownPos.left, transform: "translateX(-100%)", background: "#fff", border: "1px solid #e1e5eb", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}
+            ref={datePortalRef}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {[{ label: "Today", offset: 0 }, { label: "Tomorrow", offset: 1 }, { label: "Next Week", offset: 7 }].map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => {
+                  const d = new Date(); d.setDate(d.getDate() + opt.offset); d.setHours(12,0,0,0);
+                  onUpdate({ date: d.toISOString() });
+                  setDatePickerOpen(false);
+                }}
+                className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-black/[0.04]"
+                style={{ fontSize: "12px", color: c.text3 }}
+              >
+                <CalendarBlank size={13} style={{ color: c.text4 }} />
+                {opt.label}
+              </button>
+            ))}
+            <div className="h-px my-1.5" style={{ background: c.borderLight }} />
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={dateInputValue}
+                onChange={(e) => setDateInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && dateInputValue) {
+                    onUpdate({ date: dateInputValue + "T12:00:00.000Z" });
+                    setDatePickerOpen(false);
+                  }
+                }}
+                className="flex-1 min-w-0 rounded px-2 py-1 text-xs outline-none"
+                style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text1 }}
+                autoFocus
+              />
+              <button
+                onClick={() => {
+                  if (dateInputValue) { onUpdate({ date: dateInputValue + "T12:00:00.000Z" }); }
+                  setDatePickerOpen(false);
+                }}
+                className="p-1 rounded hover:bg-black/[0.04]"
+                style={{ color: c.coral }}
+              >
+                <Check size={13} weight="bold" />
+              </button>
+            </div>
+            {sub.date && (
+              <>
+                <div className="h-px my-1.5" style={{ background: c.borderLight }} />
+                <button
+                  onClick={() => { onUpdate({ date: undefined }); setDatePickerOpen(false); }}
+                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-black/[0.04]"
+                  style={{ fontSize: "12px", color: c.coral }}
+                >
+                  <X size={13} /> Remove date
+                </button>
+              </>
+            )}
+          </div>,
+          document.body
+        )}
+      </div>
+
+      {/* Today / Lineup icons */}
+      <div className="flex items-center gap-0.5 shrink-0">
+        {onToggleToday && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleToday(); }}
+            className="p-0.5 rounded hover:bg-black/[0.05] transition-colors"
+            title={sub.today ? "Remove from Today" : "Mark as Today"}
+          >
+            <Sun
+              size={12}
+              weight={sub.today ? "fill" : "regular"}
+              style={{ color: sub.today ? "oklch(0.75 0.16 85)" : "oklch(0.55 0.02 260)", opacity: sub.today ? 0.9 : 0.5 }}
+            />
+          </button>
+        )}
+        {onToggleLineup && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleLineup(); }}
+            className="p-0.5 rounded hover:bg-black/[0.05] transition-colors"
+            title={sub.lineup ? "Remove from Lineup" : "Add to Lineup"}
+          >
+            <SkipForward
+              size={12}
+              weight={sub.lineup ? "fill" : "regular"}
+              style={{ color: sub.lineup ? "oklch(0.58 0.2 260)" : "oklch(0.55 0.02 260)", opacity: sub.lineup ? 0.85 : 0.5 }}
+            />
+          </button>
+        )}
+      </div>
+
+      {/* Assignee avatar — clickable dropdown */}
+      <div ref={assigneeRef} onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={assigneeBtnRef}
+          onClick={() => {
+            if (!assigneeOpen && assigneeBtnRef.current) {
+              const r = assigneeBtnRef.current.getBoundingClientRect();
+              setAssigneePos({ top: r.bottom + 4, left: r.right });
+            }
+            setAssigneeOpen(!assigneeOpen);
+          }}
+          className="w-[22px] h-[22px] rounded-full hover:ring-2 hover:ring-black/10 transition-shadow flex items-center justify-center shrink-0"
+          title={assigneeMember?.displayName || "Assign"}
+        >
+          {assigneePhoto ? (
+            <ImageWithFallback src={assigneePhoto} alt={assigneeMember?.displayName || ""} className="w-full h-full rounded-full object-cover" />
+          ) : assigneeInitial ? (
+            <div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: `color-mix(in oklch, ${assigneeColor} 15%, transparent)`, color: assigneeColor, fontSize: "10px", fontWeight: 600 }}>
+              {assigneeInitial}
+            </div>
+          ) : (
+            <div className="w-full h-full rounded-full flex items-center justify-center" style={{ border: "1.5px dashed oklch(0.88 0.01 260)" }}>
+              <UserCircle size={12} style={{ color: "oklch(0.82 0.01 260)" }} />
+            </div>
+          )}
+        </button>
+        {assigneeOpen && createPortal(
+          <div
+            ref={assigneePortalRef}
+            className="fixed z-[9999] py-1 rounded-[8px] min-w-[180px]"
+            style={{ top: assigneePos.top, left: assigneePos.left, transform: "translateX(-100%)", background: "#fff", border: "1px solid #e1e5eb", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button onClick={() => { onUpdate({ assignee: undefined }); setAssigneeOpen(false); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-black/[0.04]" style={{ fontSize: "13px", color: !sub.assignee ? "var(--accent-primary)" : "#5d646f" }}>
+              <UserCircle className="w-4 h-4" style={{ color: "#8a9099" }} />
+              Unassigned
+              {!sub.assignee && <Check className="w-3 h-3 ml-auto" style={{ color: "var(--accent-primary)" }} />}
+            </button>
+            {teamMembers.map((m) => {
+              const isActive = sub.assignee === m.userId;
+              const ini = m.displayName.split(/\s+/).map((p) => p[0]).join("").toUpperCase().slice(0, 2);
+              return (
+                <button key={m.userId} onClick={() => { onUpdate({ assignee: m.userId }); setAssigneeOpen(false); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-black/[0.04]" style={{ fontSize: "13px", fontWeight: isActive ? 500 : 400, color: isActive ? "var(--accent-primary)" : "#5d646f" }}>
+                  {m.avatarUrl ? (
+                    <div className="w-5 h-5 rounded-full overflow-hidden shrink-0" style={{ background: m.avatarColor || c.coral }}><ImageWithFallback src={m.avatarUrl} alt={m.displayName} className="w-full h-full object-cover" /></div>
+                  ) : (
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: m.avatarColor || c.coral }}><span style={{ color: "white", fontSize: "8px", fontWeight: 600 }}>{ini}</span></div>
+                  )}
+                  {m.displayName}
+                  {isActive && <Check className="w-3 h-3 ml-auto" style={{ color: "var(--accent-primary)" }} />}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Inline Task Row (matching brand guide exactly) ── */
 
 function InlineTaskRow({
@@ -278,6 +554,7 @@ function InlineTaskRow({
   onToggleToday,
   onToggleLineup,
   onUpdate,
+  onSubtaskClick,
   projectName,
 }: {
   task: TaskItem;
@@ -287,6 +564,7 @@ function InlineTaskRow({
   onToggleToday: (id: string) => void;
   onToggleLineup: (id: string) => void;
   onUpdate: (id: string, updates: Partial<TaskItem>) => void;
+  onSubtaskClick: (taskId: string, subtaskId: string) => void;
   projectName: string;
 }) {
   const done = task.completed;
@@ -332,20 +610,27 @@ function InlineTaskRow({
   const assigneePhoto = assigneeMember?.avatarUrl || null;
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const assigneeRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dateInputValue, setDateInputValue] = useState("");
+
+  const datePickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!assigneeOpen) return;
+    if (!assigneeOpen && !datePickerOpen) return;
     const handler = (e: MouseEvent) => {
-      if (assigneeRef.current && !assigneeRef.current.contains(e.target as Node)) setAssigneeOpen(false);
+      if (assigneeOpen && assigneeRef.current && !assigneeRef.current.contains(e.target as Node)) setAssigneeOpen(false);
+      if (datePickerOpen && datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) setDatePickerOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [assigneeOpen]);
+  }, [assigneeOpen, datePickerOpen]);
 
   return (
+    <>
     <div
       ref={dragRef as unknown as React.RefObject<HTMLDivElement>}
-      className="group flex items-center gap-2 transition-colors hover:bg-black/[0.015] cursor-grab active:cursor-grabbing p-[4px]"
+      className="group flex items-center gap-2 transition-colors hover:bg-black/[0.015] cursor-grab active:cursor-grabbing px-[4px] py-[5px]"
       style={{ borderBottom: `1px solid ${c.borderLight}`, opacity: isDragging ? 0.4 : 1 }}
       onDragStart={(e) => {
         // Also set native drag data for cross-panel drops (chat, notepad, calendar)
@@ -393,14 +678,21 @@ function InlineTaskRow({
         {task.title}
       </span>
 
-      {/* Subtasks count */}
-      {subtaskLabel && (
-        <span
-          className="shrink-0"
+      {/* Subtasks count — clickable to expand */}
+      {subtaskTotal > 0 && (
+        <button
+          className="shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-0.5 hover:bg-black/[0.04] transition-colors"
           style={{ color: "oklch(0.72 0.01 260)", fontSize: "12px" }}
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+          title={expanded ? "Collapse subtasks" : "Expand subtasks"}
         >
+          <CaretDown
+            size={10}
+            weight="bold"
+            style={{ transform: expanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s ease" }}
+          />
           {subtaskLabel}
-        </span>
+        </button>
       )}
 
       {/* Tag */}
@@ -421,34 +713,99 @@ function InlineTaskRow({
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Date */}
-      {task.date ? (
-        <span className="shrink-0" style={{ color: c.text4, fontSize: "12px" }}>
-          {task.startDate
-            ? `${formatShortDate(task.startDate)} - ${formatShortDate(task.date)}`
-            : formatShortDate(task.date)}
-        </span>
-      ) : (
-        <div
-          className="relative shrink-0 p-0.5 rounded hover:bg-black/[0.05] transition-colors cursor-pointer"
-          title="Set due date"
-          onClick={(e) => e.stopPropagation()}
+      {/* Date — clickable date picker */}
+      <div className="relative shrink-0" ref={datePickerRef} onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => {
+            setDatePickerOpen(!datePickerOpen);
+            if (task.date) {
+              try { setDateInputValue(new Date(task.date).toISOString().split("T")[0]); } catch { setDateInputValue(""); }
+            } else {
+              setDateInputValue(new Date().toISOString().split("T")[0]);
+            }
+          }}
+          className="inline-flex items-center gap-1 px-1 py-0.5 rounded hover:bg-black/[0.05] transition-colors"
+          title={task.date ? "Change due date" : "Set due date"}
         >
-          <CalendarBlank size={13} style={{ color: "oklch(0.82 0.01 260)", opacity: 0.5 }} />
-          <input
-            ref={dateInputRef}
-            type="date"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              e.stopPropagation();
-              if (e.target.value) {
-                onUpdate(task.id, { date: e.target.value });
-              }
-            }}
-          />
-        </div>
-      )}
+          {task.date ? (
+            <span style={{ color: c.text4, fontSize: "12px" }}>
+              {task.startDate
+                ? `${formatShortDate(task.startDate)} – ${formatShortDate(task.date)}`
+                : formatShortDate(task.date)}
+            </span>
+          ) : (
+            <CalendarBlank size={13} style={{ color: "oklch(0.82 0.01 260)", opacity: 0.5 }} />
+          )}
+        </button>
+        <AnimatePresence>
+          {datePickerOpen && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: 0.1 }}
+              className="absolute top-full right-0 mt-1 p-2 rounded-[8px] z-50 min-w-[180px]"
+              style={{ background: "#fff", border: "1px solid #e1e5eb", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {[{ label: "Today", offset: 0 }, { label: "Tomorrow", offset: 1 }, { label: "Next Week", offset: 7 }].map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => {
+                    const d = new Date(); d.setDate(d.getDate() + opt.offset); d.setHours(12,0,0,0);
+                    onUpdate(task.id, { date: d.toISOString() });
+                    setDatePickerOpen(false);
+                  }}
+                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-black/[0.04]"
+                  style={{ fontSize: "12px", color: c.text3 }}
+                >
+                  <CalendarBlank size={13} style={{ color: c.text4 }} />
+                  {opt.label}
+                </button>
+              ))}
+              <div className="h-px my-1.5" style={{ background: c.borderLight }} />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={dateInputValue}
+                  onChange={(e) => setDateInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && dateInputValue) {
+                      onUpdate(task.id, { date: dateInputValue + "T12:00:00.000Z" });
+                      setDatePickerOpen(false);
+                    }
+                  }}
+                  className="flex-1 min-w-0 rounded px-2 py-1 text-xs outline-none"
+                  style={{ background: c.bg, border: `1px solid ${c.border}`, color: c.text1 }}
+                  autoFocus
+                />
+                <button
+                  onClick={() => {
+                    if (dateInputValue) { onUpdate(task.id, { date: dateInputValue + "T12:00:00.000Z" }); }
+                    setDatePickerOpen(false);
+                  }}
+                  className="p-1 rounded hover:bg-black/[0.04]"
+                  style={{ color: c.coral }}
+                >
+                  <Check size={13} weight="bold" />
+                </button>
+              </div>
+              {task.date && (
+                <>
+                  <div className="h-px my-1.5" style={{ background: c.borderLight }} />
+                  <button
+                    onClick={() => { onUpdate(task.id, { date: undefined }); setDatePickerOpen(false); }}
+                    className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-black/[0.04]"
+                    style={{ fontSize: "12px", color: c.coral }}
+                  >
+                    <X size={13} /> Remove date
+                  </button>
+                </>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Today / Lineup icons — always visible, subtle when inactive */}
       <div className="flex items-center gap-0.5 shrink-0">
@@ -474,7 +831,7 @@ function InlineTaskRow({
           className="p-0.5 rounded hover:bg-black/[0.05] transition-colors"
           title={task.lineup ? "Remove from Lineup" : "Add to Lineup"}
         >
-          <Queue
+          <SkipForward
             size={13}
             weight={task.lineup ? "fill" : "regular"}
             style={{ color: task.lineup ? "oklch(0.58 0.2 260)" : "oklch(0.55 0.02 260)", opacity: task.lineup ? 0.85 : 0.5 }}
@@ -497,20 +854,18 @@ function InlineTaskRow({
       <div className="relative" ref={assigneeRef}>
         <button
           onClick={(e) => { e.stopPropagation(); setAssigneeOpen(!assigneeOpen); }}
-          className="rounded-full hover:ring-2 hover:ring-black/10 transition-shadow"
+          className="w-[22px] h-[22px] rounded-full hover:ring-2 hover:ring-black/10 transition-shadow flex items-center justify-center shrink-0"
           title={assigneeMember?.displayName || "Assign"}
         >
           {assigneePhoto ? (
-            <div className="w-[26px] h-[26px] rounded-full overflow-hidden shrink-0" style={{ background: assigneeColor }}>
-              <ImageWithFallback src={assigneePhoto} alt={assigneeMember?.displayName || ""} className="w-full h-full object-cover" />
-            </div>
+            <ImageWithFallback src={assigneePhoto} alt={assigneeMember?.displayName || ""} className="w-full h-full rounded-full object-cover" />
           ) : assigneeInitial ? (
-            <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0" style={{ background: `color-mix(in oklch, ${assigneeColor} 15%, transparent)`, color: assigneeColor, fontSize: "11px", fontWeight: 600 }}>
+            <div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: `color-mix(in oklch, ${assigneeColor} 15%, transparent)`, color: assigneeColor, fontSize: "10px", fontWeight: 600 }}>
               {assigneeInitial}
             </div>
           ) : (
-            <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0" style={{ border: "1.5px dashed oklch(0.88 0.01 260)" }}>
-              <UserCircle size={14} style={{ color: "oklch(0.82 0.01 260)" }} />
+            <div className="w-full h-full rounded-full flex items-center justify-center" style={{ border: "1.5px dashed oklch(0.88 0.01 260)" }}>
+              <UserCircle size={12} style={{ color: "oklch(0.82 0.01 260)" }} />
             </div>
           )}
         </button>
@@ -550,6 +905,48 @@ function InlineTaskRow({
         </AnimatePresence>
       </div>
     </div>
+
+    {/* ── Expanded subtasks ── */}
+    <AnimatePresence>
+      {expanded && subtaskTotal > 0 && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="overflow-hidden"
+        >
+          {task.subtasks!.map((sub) => (
+            <SubtaskRow
+              key={sub.id}
+              sub={sub}
+              taskId={task.id}
+              teamMembers={teamMembers}
+              onUpdate={(updates) => {
+                const updatedSubtasks = task.subtasks!.map((s) =>
+                  s.id === sub.id ? { ...s, ...updates } : s
+                );
+                onUpdate(task.id, { subtasks: updatedSubtasks });
+              }}
+              onClick={() => onSubtaskClick(task.id, sub.id)}
+              onToggleToday={() => {
+                const updatedSubtasks = task.subtasks!.map((s) =>
+                  s.id === sub.id ? { ...s, today: !s.today } : s
+                );
+                onUpdate(task.id, { subtasks: updatedSubtasks });
+              }}
+              onToggleLineup={() => {
+                const updatedSubtasks = task.subtasks!.map((s) =>
+                  s.id === sub.id ? { ...s, lineup: !s.lineup } : s
+                );
+                onUpdate(task.id, { subtasks: updatedSubtasks });
+              }}
+            />
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 }
 
@@ -1435,6 +1832,9 @@ export function ProjectPage() {
     return null;
   });
 
+  // Subtask detail: when set, opens TaskDetailPane with subtask data
+  const [detailSubtask, setDetailSubtask] = useState<{ parentId: string; subtaskId: string } | null>(null);
+
 
   const handleUpdateTask = useCallback(
     (taskId: string, updates: Partial<TaskItem>) => updateTask(projectName, taskId, updates),
@@ -1452,6 +1852,67 @@ export function ProjectPage() {
       if (detailTaskId === taskId) setDetailTaskId(null);
     },
     [projectName, deleteTask, detailTaskId]
+  );
+
+  // Subtask detail pane handlers
+  const handleSubtaskClick = useCallback((parentTaskId: string, subtaskId: string) => {
+    setDetailTaskId(null); // close any open task pane
+    setDetailSubtask({ parentId: parentTaskId, subtaskId });
+  }, []);
+
+  const handleUpdateSubtaskFromPane = useCallback(
+    (subtaskId: string, updates: Partial<TaskItem>) => {
+      if (!detailSubtask || !project) return;
+      const parent = project.tasks.find((t) => t.id === detailSubtask.parentId);
+      if (!parent?.subtasks) return;
+      const updatedSubtasks = parent.subtasks.map((s) =>
+        s.id === subtaskId ? { ...s, ...updates } : s
+      );
+      updateTask(projectName, detailSubtask.parentId, { subtasks: updatedSubtasks });
+    },
+    [detailSubtask, project, projectName, updateTask]
+  );
+
+  const handleDeleteSubtaskFromPane = useCallback(
+    (subtaskId: string) => {
+      if (!detailSubtask || !project) return;
+      const parent = project.tasks.find((t) => t.id === detailSubtask.parentId);
+      if (!parent?.subtasks) return;
+      const updatedSubtasks = parent.subtasks.filter((s) => s.id !== subtaskId);
+      updateTask(projectName, detailSubtask.parentId, { subtasks: updatedSubtasks });
+      setDetailSubtask(null);
+    },
+    [detailSubtask, project, projectName, updateTask]
+  );
+
+  const handleToggleSubtaskToday = useCallback(
+    (subtaskId: string) => {
+      if (!detailSubtask || !project) return;
+      const parent = project.tasks.find((t) => t.id === detailSubtask.parentId);
+      if (!parent?.subtasks) return;
+      const sub = parent.subtasks.find((s) => s.id === subtaskId);
+      if (!sub) return;
+      const updatedSubtasks = parent.subtasks.map((s) =>
+        s.id === subtaskId ? { ...s, today: !s.today } : s
+      );
+      updateTask(projectName, detailSubtask.parentId, { subtasks: updatedSubtasks });
+    },
+    [detailSubtask, project, projectName, updateTask]
+  );
+
+  const handleToggleSubtaskLineup = useCallback(
+    (subtaskId: string) => {
+      if (!detailSubtask || !project) return;
+      const parent = project.tasks.find((t) => t.id === detailSubtask.parentId);
+      if (!parent?.subtasks) return;
+      const sub = parent.subtasks.find((s) => s.id === subtaskId);
+      if (!sub) return;
+      const updatedSubtasks = parent.subtasks.map((s) =>
+        s.id === subtaskId ? { ...s, lineup: !s.lineup } : s
+      );
+      updateTask(projectName, detailSubtask.parentId, { subtasks: updatedSubtasks });
+    },
+    [detailSubtask, project, projectName, updateTask]
   );
 
   // Use a ref to always have the latest project for non-stale updates
@@ -1509,6 +1970,32 @@ export function ProjectPage() {
     if (!detailTaskId || !project) return null;
     return project.tasks.find((t) => t.id === detailTaskId) || null;
   }, [detailTaskId, project]);
+
+  // Convert subtask to TaskItem-like object for TaskDetailPane
+  const detailSubtaskAsTask = useMemo((): TaskItem | null => {
+    if (!detailSubtask || !project) return null;
+    const parent = project.tasks.find((t) => t.id === detailSubtask.parentId);
+    if (!parent?.subtasks) return null;
+    const sub = parent.subtasks.find((s) => s.id === detailSubtask.subtaskId);
+    if (!sub) return null;
+    return {
+      id: sub.id,
+      title: sub.title,
+      completed: sub.completed,
+      date: sub.date,
+      startDate: sub.startDate,
+      assignee: sub.assignee,
+      status: sub.status || "todo",
+      content: sub.content,
+      descriptionBlocks: sub.descriptionBlocks,
+      today: sub.today,
+      lineup: sub.lineup,
+      attachments: sub.attachments,
+      comments: sub.comments,
+      subtasks: sub.subtasks,
+      priority: sub.priority,
+    } as TaskItem;
+  }, [detailSubtask, project]);
 
   /* ── Filter → Sort → Group tasks ── */
   const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
@@ -1712,7 +2199,7 @@ export function ProjectPage() {
 
 
 
-          <div className="px-6 lg:px-8 pt-6 lg:pt-7">
+          <div className="max-w-[1200px] mx-auto px-6 lg:px-8 pt-6 lg:pt-7">
 
             {/* ── Title row ── */}
             <div className="flex items-center justify-between gap-4 mb-5">
@@ -1849,7 +2336,6 @@ export function ProjectPage() {
 
             {/* ─ Tags row + Space picker ── */}
             
-          </div>
 
           {/* ── Resources ── */}
           <ProjectResources
@@ -1860,7 +2346,7 @@ export function ProjectPage() {
           {/* ═════════════════════════════════════════
               TASKS section
               ══════════════════════════════════════════ */}
-          <div className="px-[32px] pt-[0px] pb-[40px]">
+          <div className="pt-[0px] pb-[40px]">
             {/* Tasks header bar */}
             <div className="flex items-center justify-between gap-3 pt-4 pb-3">
               <div className="flex items-center gap-2">
@@ -2194,10 +2680,11 @@ export function ProjectPage() {
                                 task={task}
                                 teamMembers={teamMembers}
                                 onToggleComplete={handleToggleComplete}
-                                onClick={(id) => setDetailTaskId(id)}
+                                onClick={(id) => { setDetailSubtask(null); setDetailTaskId(id); }}
                                 onToggleToday={handleToggleToday}
                                 onToggleLineup={handleToggleLineup}
                                 onUpdate={handleUpdateTask}
+                                onSubtaskClick={handleSubtaskClick}
                                 projectName={projectName}
                               />
                             ))}
@@ -2229,10 +2716,11 @@ export function ProjectPage() {
                               task={task}
                               teamMembers={teamMembers}
                               onToggleComplete={handleToggleComplete}
-                              onClick={(id) => setDetailTaskId(id)}
+                              onClick={(id) => { setDetailSubtask(null); setDetailTaskId(id); }}
                               onToggleToday={handleToggleToday}
                               onToggleLineup={handleToggleLineup}
                               onUpdate={handleUpdateTask}
+                              onSubtaskClick={handleSubtaskClick}
                               projectName={projectName}
                             />
                           ))}
@@ -2366,6 +2854,7 @@ export function ProjectPage() {
               Add task
             </button>
           </div>
+          </div>{/* close max-w-[1200px] */}
         </div>
 
 
@@ -2397,6 +2886,30 @@ export function ProjectPage() {
             onToggleToday={handleToggleToday}
             isLineup={!!detailTask.lineup}
             onToggleLineup={handleToggleLineup}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Subtask Detail Pane ── */}
+      <AnimatePresence>
+        {detailSubtaskAsTask && detailSubtask && (
+          <TaskDetailPane
+            key={`sub-${detailSubtask.subtaskId}`}
+            task={detailSubtaskAsTask}
+            projectName={projectName}
+            projectColor={project.color}
+            projectIcon={project.phosphorIcon}
+            projectShortName={project.shortName}
+            open={!!detailSubtaskAsTask}
+            onClose={() => setDetailSubtask(null)}
+            onUpdate={handleUpdateSubtaskFromPane}
+            onDelete={handleDeleteSubtaskFromPane}
+            teamMembers={teamMembers}
+            allTasks={project.tasks}
+            isToday={!!detailSubtaskAsTask.today}
+            onToggleToday={handleToggleSubtaskToday}
+            isLineup={!!detailSubtaskAsTask.lineup}
+            onToggleLineup={handleToggleSubtaskLineup}
           />
         )}
       </AnimatePresence>

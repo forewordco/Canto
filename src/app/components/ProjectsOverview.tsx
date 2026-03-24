@@ -27,11 +27,25 @@ import {
   Trash,
   Export,
   UploadSimple,
+  DownloadSimple,
   X,
   ArrowCounterClockwise,
   Check,
   Warning,
   ArrowClockwise,
+  List,
+  SquaresFour,
+  Kanban,
+  Timer,
+  CalendarBlank,
+  Circle,
+  Users,
+  ArrowRight,
+  MagnifyingGlass,
+  SortAscending,
+  Funnel,
+  FloppyDisk,
+  SlidersHorizontal,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
 import { useData, useVisibleProjects } from "../lib/data";
@@ -50,7 +64,6 @@ import { ProjectCreationWizard } from "./ProjectCreationWizard";
 import { ResponsiveModal, FilterDrawer } from "./ResponsiveModal";
 import { ProjectIcon } from "./ProjectIcon";
 import { toast } from "sonner";
-import { ListToolbar } from "./ListToolbar";
 import type { SortOption } from "./ListToolbar";
 
 /* ─── Work-type color mapping ─── */
@@ -117,6 +130,16 @@ const PROJECT_SORT_OPTIONS: SortOption[] = [
 
 /* ─── Group By ─── */
 type GroupBy = "phase" | "status" | "type" | "client" | "none";
+
+/* ─── View Modes ─── */
+type ViewMode = "card" | "list" | "kanban" | "timeline";
+
+const VIEW_MODES: { value: ViewMode; label: string; icon: React.ElementType }[] = [
+  { value: "list", label: "List", icon: List },
+  { value: "card", label: "Card", icon: SquaresFour },
+  { value: "kanban", label: "Kanban", icon: Kanban },
+  { value: "timeline", label: "Timeline", icon: Timer },
+];
 
 /* ═══════════════════════════════════════════════════════════
    CONTEXT MENU
@@ -500,18 +523,31 @@ export function ProjectsOverview() {
   const visibleProjects = useVisibleProjects();
   const { navigate } = useNavigation();
 
+  // Load saved view from localStorage
+  const savedView = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("canto-projects-saved-view");
+      if (raw) return JSON.parse(raw) as {
+        viewMode: ViewMode; sortBy: SortBy; groupBy: GroupBy;
+        statusFilter: string[]; phaseFilter: string[]; typeFilter: string[]; clientFilter: string[];
+      };
+    } catch { /* ignore */ }
+    return null;
+  }, []);
+
   // UI state
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<SortBy>("starred");
-  const [groupBy, setGroupBy] = useState<GroupBy>("phase");
+  const [sortBy, setSortBy] = useState<SortBy>(savedView?.sortBy ?? "starred");
+  const [groupBy, setGroupBy] = useState<GroupBy>(savedView?.groupBy ?? "phase");
   const [showArchived, setShowArchived] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(savedView?.viewMode ?? "card");
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<Set<ProjectStatus>>(new Set());
-  const [phaseFilter, setPhaseFilter] = useState<Set<ProductionPhase>>(new Set());
-  const [typeFilter, setTypeFilter] = useState<Set<ProjectType>>(new Set());
-  const [clientFilter, setClientFilter] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<ProjectStatus>>(new Set((savedView?.statusFilter ?? []) as ProjectStatus[]));
+  const [phaseFilter, setPhaseFilter] = useState<Set<ProductionPhase>>(new Set((savedView?.phaseFilter ?? []) as ProductionPhase[]));
+  const [typeFilter, setTypeFilter] = useState<Set<ProjectType>>(new Set((savedView?.typeFilter ?? []) as ProjectType[]));
+  const [clientFilter, setClientFilter] = useState<Set<string>>(new Set(savedView?.clientFilter ?? []));
 
   // Filter dropdown open state
   const [openFilter, setOpenFilter] = useState<string | null>(null);
@@ -758,34 +794,26 @@ export function ProjectsOverview() {
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-5">
-      {/* ═══ Header ═══ */}
+      {/* ═══ Header Row 1: Title + Actions ═══ */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <SquareHalf className="w-7 h-7" weight="fill" style={{ color: "var(--accent-primary)" }} />
-          <h1 style={{ color: "var(--text-primary)", fontSize: "28px", fontWeight: 700, letterSpacing: "-0.01em" }}>
+          <h1 style={{ color: "var(--text-primary)", fontSize: "24px", fontWeight: 700, letterSpacing: "-0.01em" }}>
             Projects
           </h1>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <ListToolbar
-            searchValue={searchQuery}
-            onSearchChange={setSearchQuery}
-            searchPlaceholder="Search projects…"
-            sortOptions={PROJECT_SORT_OPTIONS}
-            sortValue={sortBy}
-            onSortChange={(v) => setSortBy(v as SortBy)}
-            activeFilterCount={activeFilterCount}
-            onFilterClick={() => {
-              if (window.innerWidth < 640) setFiltersExpanded(!filtersExpanded);
-              else setOpenFilter(openFilter ? null : "status");
-            }}
-            groupActive={groupBy !== "none"}
-            groupLabel={groupBy !== "none" ? `Grouped: ${groupBy}` : "Group"}
-            onGroupClick={() => setGroupBy(groupBy === "none" ? "phase" : "none")}
-          />
-
           <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+
+          <button
+            onClick={() => importRef.current?.click()}
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ border: "1px solid var(--border-default)", color: "var(--text-secondary)", fontSize: "13px", fontWeight: 500 }}
+          >
+            <DownloadSimple className="w-4 h-4" />
+            <span className="hidden sm:inline">Import</span>
+          </button>
 
           <button
             onClick={() => { setDuplicateFrom(null); setWizardOpen(true); }}
@@ -797,6 +825,105 @@ export function ProjectsOverview() {
           </button>
         </div>
       </div>
+
+      {/* ═══ Header Row 2: View Switcher (left) + Toolbar Icons (right) ═══ */}
+      <div className="flex items-center justify-between gap-4 -mt-1">
+        {/* View mode switcher — left aligned */}
+        <div className="flex items-center rounded-[6px] p-0.5" style={{ background: "var(--neutral-100)" }}>
+          {VIEW_MODES.map(vm => (
+            <button
+              key={vm.value}
+              onClick={() => setViewMode(vm.value)}
+              title={vm.label}
+              className="flex items-center justify-center w-7 h-7 rounded-[5px] transition-all"
+              style={{
+                background: viewMode === vm.value ? "var(--surface-bg)" : "transparent",
+                color: viewMode === vm.value ? "var(--accent-primary)" : "var(--text-quaternary)",
+                boxShadow: viewMode === vm.value ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+              }}
+            >
+              <vm.icon className="w-4 h-4" weight={viewMode === vm.value ? "fill" : "regular"} />
+            </button>
+          ))}
+        </div>
+
+        {/* Toolbar icons — right aligned */}
+        <div className="flex items-center gap-0.5">
+          <ToolbarIconButton
+            icon={MagnifyingGlass}
+            tooltip="Search"
+            active={!!searchQuery}
+            onClick={() => {
+              if (searchQuery) setSearchQuery("");
+              else {
+                const el = document.getElementById("po-search-input");
+                if (el) el.focus();
+                else setSearchQuery(" ");
+              }
+            }}
+          />
+          <ToolbarIconButton
+            icon={SortAscending}
+            tooltip={`Sort: ${PROJECT_SORT_OPTIONS.find(o => o.value === sortBy)?.label || sortBy}`}
+            active={sortBy !== "starred"}
+            onClick={() => {
+              const idx = PROJECT_SORT_OPTIONS.findIndex(o => o.value === sortBy);
+              const next = PROJECT_SORT_OPTIONS[(idx + 1) % PROJECT_SORT_OPTIONS.length];
+              setSortBy(next.value as SortBy);
+              toast.success(`Sorted by ${next.label}`);
+            }}
+          />
+          <ToolbarIconButton
+            icon={Funnel}
+            tooltip="Filter"
+            active={activeFilterCount > 0}
+            badge={activeFilterCount > 0 ? activeFilterCount : undefined}
+            onClick={() => {
+              if (window.innerWidth < 640) setFiltersExpanded(!filtersExpanded);
+              else setOpenFilter(openFilter ? null : "status");
+            }}
+          />
+          <GroupByDropdown groupBy={groupBy} setGroupBy={setGroupBy} />
+          <ToolbarIconButton
+            icon={FloppyDisk}
+            tooltip="Save View"
+            onClick={() => {
+              const payload = {
+                viewMode, sortBy, groupBy,
+                statusFilter: Array.from(statusFilter),
+                phaseFilter: Array.from(phaseFilter),
+                typeFilter: Array.from(typeFilter),
+                clientFilter: Array.from(clientFilter),
+              };
+              localStorage.setItem("canto-projects-saved-view", JSON.stringify(payload));
+              toast.success("View saved", { description: `${VIEW_MODES.find(v => v.value === viewMode)?.label} view · Sort: ${sortBy} · Group: ${groupBy}` });
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Inline search bar (shown when search is active) */}
+      <AnimatePresence>
+        {searchQuery && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden -mt-2">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-[8px]" style={{ background: "var(--neutral-50)", border: "1px solid var(--border-default)" }}>
+              <MagnifyingGlass className="w-4 h-4 shrink-0" style={{ color: "var(--text-quaternary)" }} />
+              <input
+                id="po-search-input"
+                value={searchQuery === " " ? "" : searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search projects…"
+                autoFocus
+                className="flex-1 bg-transparent outline-none"
+                style={{ color: "var(--text-primary)", fontSize: "13px" }}
+              />
+              <button onClick={() => setSearchQuery("")} className="shrink-0 p-0.5 rounded hover:bg-black/5">
+                <X className="w-3.5 h-3.5" style={{ color: "var(--text-quaternary)" }} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ Filter row (desktop, conditional) ═══ */}
       <AnimatePresence>
@@ -905,20 +1032,9 @@ export function ProjectsOverview() {
         </div>
       )}
 
-      {/* ═══ Projects Section Header ═══ */}
-      <div className="flex items-center gap-2">
-        <span style={{ color: "var(--text-primary)", fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-          Projects
-        </span>
-        <span
-          className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold"
-          style={{ background: "var(--neutral-100)", color: "var(--text-quaternary)" }}
-        >
-          {activeProjects.length}
-        </span>
-      </div>
+      {/* spacer removed — view switcher is now in header row 2 */}
 
-      {/* ═══ Card Grid ═══ */}
+      {/* ═══ Project Views ═══ */}
       {activeProjects.length === 0 && archivedProjects.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="w-16 h-16 rounded-[12px] flex items-center justify-center mb-4" style={{ background: "var(--neutral-100)" }}>
@@ -940,19 +1056,34 @@ export function ProjectsOverview() {
         </div>
       ) : (
         <>
-          {groupBy !== "none" ? (
-            groupedProjects.map(group => (
-              <PhaseGroupSection
-                key={group.key}
-                groupKey={group.key}
-                label={group.label}
-                color={group.color}
-                bgColor={group.bgColor}
-                projects={group.projects}
-                defaultOpen
-              >
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pl-5 mt-1">
-                  {group.projects.map(([name, project], idx) => (
+          {viewMode === "card" && (
+            <>
+              {groupBy !== "none" ? (
+                groupedProjects.map(group => (
+                  <PhaseGroupSection
+                    key={group.key}
+                    groupKey={group.key}
+                    label={group.label}
+                    color={group.color}
+                    bgColor={group.bgColor}
+                    projects={group.projects}
+                    defaultOpen
+                  >
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pl-5 mt-1">
+                      {group.projects.map(([name, project], idx) => (
+                        <ProjectCard
+                          key={name} name={name} project={project} idx={idx}
+                          onNav={() => navigate("project", { projectId: name })}
+                          onContextMenu={(e) => handleContextMenu(e, name)}
+                          isStarred={starred.has(name)}
+                        />
+                      ))}
+                    </div>
+                  </PhaseGroupSection>
+                ))
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {activeProjects.map(([name, project], idx) => (
                     <ProjectCard
                       key={name} name={name} project={project} idx={idx}
                       onNav={() => navigate("project", { projectId: name })}
@@ -961,19 +1092,37 @@ export function ProjectsOverview() {
                     />
                   ))}
                 </div>
-              </PhaseGroupSection>
-            ))
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {activeProjects.map(([name, project], idx) => (
-                <ProjectCard
-                  key={name} name={name} project={project} idx={idx}
-                  onNav={() => navigate("project", { projectId: name })}
-                  onContextMenu={(e) => handleContextMenu(e, name)}
-                  isStarred={starred.has(name)}
-                />
-              ))}
-            </div>
+              )}
+            </>
+          )}
+
+          {viewMode === "list" && (
+            <ProjectListView
+              projects={activeProjects}
+              starred={starred}
+              onNav={(name) => navigate("project", { projectId: name })}
+              onContextMenu={handleContextMenu}
+              groupedProjects={groupBy !== "none" ? groupedProjects : null}
+            />
+          )}
+
+          {viewMode === "kanban" && (
+            <ProjectKanbanView
+              projects={activeProjects}
+              starred={starred}
+              onNav={(name) => navigate("project", { projectId: name })}
+              onContextMenu={handleContextMenu}
+              groupBy={groupBy === "none" ? "phase" : groupBy}
+            />
+          )}
+
+          {viewMode === "timeline" && (
+            <ProjectTimelineView
+              projects={activeProjects}
+              starred={starred}
+              onNav={(name) => navigate("project", { projectId: name })}
+              onContextMenu={handleContextMenu}
+            />
           )}
 
           {/* Archived section */}
@@ -1036,6 +1185,97 @@ export function ProjectsOverview() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   TOOLBAR ICON BUTTON
+   ═══════════════════════════════════════════════════════════ */
+
+function ToolbarIconButton({ icon: Icon, tooltip, active, badge, onClick }: {
+  icon: React.ElementType; tooltip: string; active?: boolean; badge?: number; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={tooltip}
+      className="relative flex items-center justify-center w-8 h-8 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+      style={{ color: active ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+    >
+      <Icon className="w-[18px] h-[18px]" weight={active ? "fill" : "regular"} />
+      {badge !== undefined && badge > 0 && (
+        <span
+          className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full text-white text-[9px] font-bold leading-none px-[3px]"
+          style={{ background: "var(--accent-primary)" }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GROUP BY DROPDOWN
+   ═══════════════════════════════════════════════════════════ */
+
+const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: "none", label: "No grouping" },
+  { value: "phase", label: "Phase" },
+  { value: "status", label: "Status" },
+  { value: "type", label: "Type" },
+  { value: "client", label: "Client" },
+];
+
+function GroupByDropdown({ groupBy, setGroupBy }: { groupBy: GroupBy; setGroupBy: (g: GroupBy) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        title={groupBy !== "none" ? `Grouped: ${groupBy}` : "Group"}
+        className="relative flex items-center justify-center w-8 h-8 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+        style={{ color: groupBy !== "none" ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+      >
+        <SlidersHorizontal className="w-[18px] h-[18px]" weight={groupBy !== "none" ? "fill" : "regular"} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.1 }}
+            className="absolute right-0 top-full mt-1.5 z-40 py-1.5 rounded-[8px] shadow-lg min-w-[160px]"
+            style={{ background: "var(--surface-bg)", border: "1px solid var(--border-default)" }}
+          >
+            <div className="px-3 pt-1 pb-2">
+              <span style={{ color: "var(--text-quaternary)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Group by</span>
+            </div>
+            {GROUP_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => { setGroupBy(opt.value); setOpen(false); }}
+                className="flex items-center gap-2 w-full px-3 py-1.5 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                style={{ fontSize: "13px", color: groupBy === opt.value ? "var(--accent-primary)" : "var(--text-secondary)", fontWeight: groupBy === opt.value ? 500 : 400 }}
+              >
+                {groupBy === opt.value && <Check className="w-3.5 h-3.5 shrink-0" />}
+                {groupBy !== opt.value && <div className="w-3.5" />}
+                {opt.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    FILTER PILL
    ═══════════════════════════════════════════════════════════ */
 
@@ -1057,6 +1297,385 @@ function FilterPill({ label, active, onClick, onClear }: { label: string; active
       )}
       {!active && <CaretDown className="w-3 h-3 ml-0.5" />}
     </button>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LIST VIEW — Tabular rows with columns
+   ═══════════════════════════════════════════════════════════ */
+
+interface ViewProps {
+  projects: [string, ProjectData][];
+  starred: Set<string>;
+  onNav: (name: string) => void;
+  onContextMenu: (e: React.MouseEvent, name: string) => void;
+}
+
+function ProjectListView({ projects, starred, onNav, onContextMenu, groupedProjects }: ViewProps & {
+  groupedProjects: { key: string; label: string; color: string; bgColor: string; projects: [string, ProjectData][] }[] | null;
+}) {
+  const thStyle: React.CSSProperties = {
+    color: "var(--text-quaternary)",
+    fontSize: "11px",
+    fontWeight: 500,
+    textAlign: "left",
+    padding: "8px 12px",
+    whiteSpace: "nowrap",
+    borderBottom: "1px solid var(--border-default)",
+  };
+
+  const renderRow = ([name, project]: [string, ProjectData], idx: number) => {
+    const statusOpt = PROJECT_STATUS_OPTIONS.find(o => o.value === project.status);
+    const phaseMeta = PHASE_META[project.productionPhase];
+    const typeOpt = PROJECT_TYPE_OPTIONS.find(o => o.value === project.projectType);
+    const typeColor = WORK_TYPE_COLORS[project.projectType];
+    const totalTasks = project.tasks.length;
+    const doneTasks = project.tasks.filter(t => t.completed).length;
+    const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+    const clientColors = project.client ? getClientColor(project.client) : null;
+
+    // Find the next upcoming date
+    const nextDate = (() => {
+      if (!project.timelineDates?.length) return "";
+      const now = Date.now();
+      const upcoming = project.timelineDates
+        .map(d => {
+          const t = new Date(d.endLabel || d.label).getTime();
+          return isNaN(t) ? null : t;
+        })
+        .filter((t): t is number => t !== null && t >= now)
+        .sort((a, b) => a - b);
+      if (upcoming.length === 0) return "";
+      const d = new Date(upcoming[0]);
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${months[d.getMonth()]} ${d.getDate()}`;
+    })();
+
+    return (
+      <tr
+        key={name}
+        onClick={() => onNav(name)}
+        onContextMenu={(e) => onContextMenu(e, name)}
+        className="cursor-pointer transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02] group"
+      >
+        <td className="py-2 px-3" style={{ borderBottom: "1px solid var(--border-default)" }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <ProjectIcon phosphorIcon={project.phosphorIcon} color={project.color} iconUrl={project.iconUrl} size="sm" />
+            <span className="truncate" style={{ color: "var(--text-primary)", fontSize: "13px", fontWeight: 500 }}>
+              {project.shortName || name}
+            </span>
+          </div>
+        </td>
+        <td className="py-2 px-3 hidden sm:table-cell" style={{ borderBottom: "1px solid var(--border-default)" }}>
+          <div className="flex items-center gap-1.5">
+            {statusOpt && (
+              <>
+                <span className="w-[6px] h-[6px] rounded-full shrink-0" style={{ background: statusOpt.color }} />
+                <span style={{ color: "var(--text-secondary)", fontSize: "12px" }}>{statusOpt.label}</span>
+              </>
+            )}
+            {project.updates?.[0]?.createdAt && (
+              <span className="ml-1" style={{ color: "var(--text-quaternary)", fontSize: "11px" }}>
+                {relativeDate(project.updates[0].createdAt)}
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="py-2 px-3 hidden md:table-cell" style={{ borderBottom: "1px solid var(--border-default)" }}>
+          {phaseMeta && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[4px]"
+              style={{ background: phaseMeta.bgColor, color: phaseMeta.color, fontSize: "11px", fontWeight: 600 }}
+            >
+              {phaseMeta.label}
+            </span>
+          )}
+        </td>
+        <td className="py-2 px-3 hidden lg:table-cell" style={{ borderBottom: "1px solid var(--border-default)" }}>
+          {typeOpt && typeColor && (
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-[4px]"
+              style={{ background: typeColor.bg, color: typeColor.color, fontSize: "11px", fontWeight: 500 }}
+            >
+              {typeOpt.label}
+            </span>
+          )}
+        </td>
+        <td className="py-2 px-3 hidden sm:table-cell" style={{ borderBottom: "1px solid var(--border-default)" }}>
+          <div className="flex items-center gap-2 min-w-[90px]">
+            <div className="flex-1 h-[5px] rounded-full overflow-hidden" style={{ background: "var(--neutral-100)", maxWidth: "60px" }}>
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${pct}%`,
+                  background: pct === 100 ? "oklch(0.72 0.17 155)" : pct > 60 ? "oklch(0.72 0.17 155)" : "var(--accent-primary)",
+                }}
+              />
+            </div>
+            <span style={{ color: "var(--text-quaternary)", fontSize: "11px" }}>{pct}%</span>
+          </div>
+        </td>
+        <td className="py-2 px-3 hidden lg:table-cell" style={{ borderBottom: "1px solid var(--border-default)" }}>
+          {project.client && clientColors ? (
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-[4px]"
+              style={{ background: clientColors.bg, color: clientColors.color, fontSize: "11px", fontWeight: 500 }}
+            >
+              {project.client}
+            </span>
+          ) : (
+            <span style={{ color: "var(--text-quaternary)", fontSize: "12px" }}>{"\u2014"}</span>
+          )}
+        </td>
+        <td className="py-2 px-3 hidden xl:table-cell" style={{ borderBottom: "1px solid var(--border-default)" }}>
+          <span style={{ color: "var(--text-quaternary)", fontSize: "12px" }}>{nextDate || "\u2014"}</span>
+        </td>
+      </tr>
+    );
+  };
+
+  const colHeader = (
+    <thead>
+      <tr>
+        <th style={{ ...thStyle, minWidth: "200px" }}>Name</th>
+        <th className="hidden sm:table-cell" style={thStyle}>Status</th>
+        <th className="hidden md:table-cell" style={thStyle}>Current Stage</th>
+        <th className="hidden lg:table-cell" style={thStyle}>Work Type</th>
+        <th className="hidden sm:table-cell" style={thStyle}>Task progr…</th>
+        <th className="hidden lg:table-cell" style={thStyle}>Client</th>
+        <th className="hidden xl:table-cell" style={thStyle}>Next Date</th>
+      </tr>
+    </thead>
+  );
+
+  if (groupedProjects) {
+    return (
+      <table className="w-full border-collapse" style={{ tableLayout: "auto" }}>
+        {colHeader}
+        <tbody>
+          {groupedProjects.map(group => (
+            <ListPhaseGroup key={group.key} label={group.label} color={group.color} bgColor={group.bgColor} colCount={7}>
+              {group.projects.map((entry, idx) => renderRow(entry, idx))}
+            </ListPhaseGroup>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  return (
+    <table className="w-full border-collapse" style={{ tableLayout: "auto" }}>
+      {colHeader}
+      <tbody>{projects.map((entry, idx) => renderRow(entry, idx))}</tbody>
+    </table>
+  );
+}
+
+/** Collapsible group header row inside the table */
+function ListPhaseGroup({ label, color, bgColor, colCount, children }: {
+  label: string; color: string; bgColor: string; colCount: number; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <tr>
+        <td colSpan={colCount} className="pt-4 pb-1 px-1">
+          <button onClick={() => setOpen(!open)} className="flex items-center gap-2 py-1 px-1 rounded-[4px] transition-colors hover:bg-black/[0.02]">
+            
+            <span
+              className="inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-[4px]"
+              style={{ background: bgColor, color, fontSize: "12px", fontWeight: 600 }}
+            >
+              <span className="w-[7px] h-[7px] rounded-full" style={{ background: color }} />
+              {label}
+            </span>
+          </button>
+        </td>
+      </tr>
+      {open && children}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KANBAN VIEW — Columns grouped by phase/status
+   ═══════════════════════════════════════════════════════════ */
+
+function ProjectKanbanView({ projects, starred, onNav, onContextMenu, groupBy }: ViewProps & { groupBy: GroupBy }) {
+  const columns = useMemo(() => {
+    const groupMap = new Map<string, [string, ProjectData][]>();
+    const orderMap = new Map<string, number>();
+
+    if (groupBy === "phase") {
+      const phaseOrder = ["incoming", "pre-production", "in-production", "post-production", "submitted", "revisions", "ongoing", "future", "cold"];
+      phaseOrder.forEach((p, i) => orderMap.set(p, i));
+      for (const entry of projects) { const key = entry[1].productionPhase; if (!groupMap.has(key)) groupMap.set(key, []); groupMap.get(key)!.push(entry); }
+    } else if (groupBy === "status") {
+      PROJECT_STATUS_OPTIONS.forEach((o, i) => orderMap.set(o.value, i));
+      for (const entry of projects) { const key = entry[1].status; if (!groupMap.has(key)) groupMap.set(key, []); groupMap.get(key)!.push(entry); }
+    } else if (groupBy === "type") {
+      PROJECT_TYPE_OPTIONS.forEach((o, i) => orderMap.set(o.value, i));
+      for (const entry of projects) { const key = entry[1].projectType; if (!groupMap.has(key)) groupMap.set(key, []); groupMap.get(key)!.push(entry); }
+    } else {
+      for (const entry of projects) { const key = entry[1].client || "(No Client)"; if (!groupMap.has(key)) groupMap.set(key, []); groupMap.get(key)!.push(entry); }
+    }
+
+    return Array.from(groupMap.entries())
+      .sort((a, b) => (orderMap.get(a[0]) ?? 99) - (orderMap.get(b[0]) ?? 99))
+      .map(([key, entries]) => {
+        let label = key, color = "var(--text-secondary)";
+        if (groupBy === "phase" && PHASE_META[key as ProductionPhase]) { label = PHASE_META[key as ProductionPhase].label; color = PHASE_META[key as ProductionPhase].color; }
+        else if (groupBy === "status") { const opt = PROJECT_STATUS_OPTIONS.find(o => o.value === key); if (opt) { label = opt.label; color = opt.color; } }
+        else if (groupBy === "type") { const opt = PROJECT_TYPE_OPTIONS.find(o => o.value === key); const tc = WORK_TYPE_COLORS[key as ProjectType]; if (opt) label = opt.label; if (tc) color = tc.color; }
+        return { key, label, color, entries };
+      });
+  }, [projects, groupBy]);
+
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2" style={{ scrollSnapType: "x mandatory" }}>
+      {columns.map(col => (
+        <div key={col.key} className="shrink-0 w-[260px] rounded-[10px] flex flex-col max-h-[calc(100vh-260px)]"
+          style={{ background: "var(--neutral-50)", border: "1px solid var(--border-default)", scrollSnapAlign: "start" }}>
+          <div className="flex items-center gap-2 px-3 py-2.5 shrink-0" style={{ borderBottom: "1px solid var(--border-default)" }}>
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col.color }} />
+            <span className="truncate" style={{ color: "var(--text-primary)", fontSize: "12px", fontWeight: 600 }}>{col.label}</span>
+            <span className="ml-auto shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[10px] font-bold"
+              style={{ background: "var(--neutral-100)", color: "var(--text-quaternary)" }}>{col.entries.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2">
+            {col.entries.map(([name, project], idx) => {
+              const statusOpt = PROJECT_STATUS_OPTIONS.find(o => o.value === project.status);
+              const total = project.tasks.length;
+              const done = project.tasks.filter(t => t.completed).length;
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              return (
+                <motion.div key={name} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.02 }}
+                  onClick={() => onNav(name)} onContextMenu={(e) => onContextMenu(e, name)}
+                  className="cursor-pointer rounded-[8px] p-2.5 transition-all hover:shadow-sm"
+                  style={{ background: "var(--surface-bg)", border: "1px solid var(--border-default)" }}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <ProjectIcon phosphorIcon={project.phosphorIcon} color={project.color} iconUrl={project.iconUrl} size="sm" />
+                    <span className="truncate" style={{ color: "var(--text-primary)", fontSize: "13px", fontWeight: 500 }}>{project.shortName || name}</span>
+                    {starred.has(name) && <Star className="w-3 h-3 shrink-0" weight="fill" style={{ color: "#F59145" }} />}
+                  </div>
+                  {project.client && <p className="truncate mb-1.5" style={{ color: "var(--text-quaternary)", fontSize: "11px" }}>{project.client}</p>}
+                  <div className="flex items-center gap-2">
+                    {statusOpt && (
+                      <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded-[3px]"
+                        style={{ background: `${statusOpt.color}15`, color: statusOpt.color, fontSize: "9px", fontWeight: 600 }}>
+                        <span className="w-[4px] h-[4px] rounded-full" style={{ background: statusOpt.color }} />{statusOpt.label}
+                      </span>
+                    )}
+                    <div className="flex-1" />
+                    <span style={{ color: "var(--text-quaternary)", fontSize: "10px" }}>{done}/{total}</span>
+                  </div>
+                  {total > 0 && (
+                    <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: "var(--neutral-100)" }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? "oklch(0.72 0.17 155)" : "var(--accent-primary)" }} />
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════���══════
+   TIMELINE VIEW — Horizontal Gantt-style chart
+   ═══════════════════════════════════════════════════════════ */
+
+function ProjectTimelineView({ projects, starred, onNav, onContextMenu }: ViewProps) {
+  const today = useMemo(() => new Date(), []);
+
+  const { timelineData, minDate, maxDate, totalDays } = useMemo(() => {
+    const now = today.getTime();
+    let min = now - 30 * 86400000;
+    let max = now + 90 * 86400000;
+
+    const data = projects.map(([name, project]) => {
+      const dates = project.timelineDates || [];
+      let projStart = now, projEnd = now + 30 * 86400000;
+
+      if (dates.length > 0) {
+        const parsed = dates.map(d => { const p = new Date(d.label); return isNaN(p.getTime()) ? null : p.getTime(); }).filter(Boolean) as number[];
+        const endParsed = dates.map(d => { if (d.endLabel) { const p = new Date(d.endLabel); return isNaN(p.getTime()) ? null : p.getTime(); } return null; }).filter(Boolean) as number[];
+        const allDates = [...parsed, ...endParsed];
+        if (allDates.length > 0) { projStart = Math.min(...allDates); projEnd = Math.max(...allDates); if (projEnd <= projStart) projEnd = projStart + 14 * 86400000; }
+      } else {
+        const spans: Record<string, number> = { incoming: 7, "pre-production": 14, "in-production": 30, "post-production": 21, submitted: 7, revisions: 14, ongoing: 60, future: 30, cold: 14 };
+        const span = (spans[project.productionPhase] || 30) * 86400000;
+        projStart = now - span * 0.3; projEnd = projStart + span;
+      }
+      if (projStart < min) min = projStart;
+      if (projEnd > max) max = projEnd;
+      return { name, project, start: projStart, end: projEnd };
+    });
+
+    min -= 7 * 86400000; max += 7 * 86400000;
+    return { timelineData: data, minDate: min, maxDate: max, totalDays: Math.max(1, (max - min) / 86400000) };
+  }, [projects, today]);
+
+  const months = useMemo(() => {
+    const result: { label: string; left: number }[] = [];
+    const d = new Date(minDate); d.setDate(1); d.setHours(0, 0, 0, 0);
+    if (d.getTime() < minDate) d.setMonth(d.getMonth() + 1);
+    const mn = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    while (d.getTime() < maxDate) {
+      result.push({ label: `${mn[d.getMonth()]} ${d.getFullYear()}`, left: ((d.getTime() - minDate) / 86400000 / totalDays) * 100 });
+      d.setMonth(d.getMonth() + 1);
+    }
+    return result;
+  }, [minDate, maxDate, totalDays]);
+
+  const todayPos = ((today.getTime() - minDate) / 86400000 / totalDays) * 100;
+
+  return (
+    <div className="rounded-[10px] border overflow-hidden" style={{ background: "var(--surface-bg)", borderColor: "var(--border-default)" }}>
+      <div className="flex" style={{ borderBottom: "1px solid var(--border-default)" }}>
+        <div className="w-[200px] shrink-0 px-3 py-2" style={{ borderRight: "1px solid var(--border-default)" }}>
+          <span style={{ color: "var(--text-quaternary)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Project</span>
+        </div>
+        <div className="flex-1 relative min-w-[500px] overflow-hidden h-8">
+          {months.map((m, i) => (
+            <div key={i} className="absolute top-0 bottom-0 flex items-center" style={{ left: `${m.left}%`, borderLeft: "1px solid var(--border-default)" }}>
+              <span className="pl-1.5" style={{ color: "var(--text-quaternary)", fontSize: "10px", fontWeight: 500, whiteSpace: "nowrap" }}>{m.label}</span>
+            </div>
+          ))}
+          <div className="absolute top-0 bottom-0 w-px z-10" style={{ left: `${todayPos}%`, background: "oklch(0.65 0.2 25)" }} />
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        {timelineData.map(({ name, project, start, end }, idx) => {
+          const pm = PHASE_META[project.productionPhase];
+          const leftPct = ((start - minDate) / 86400000 / totalDays) * 100;
+          const widthPct = Math.max(1, ((end - start) / 86400000 / totalDays) * 100);
+          return (
+            <div key={name} className="flex items-center cursor-pointer transition-colors hover:bg-black/[0.015] dark:hover:bg-white/[0.015]"
+              style={{ borderBottom: "1px solid var(--border-default)", minHeight: "40px" }}
+              onClick={() => onNav(name)} onContextMenu={(e) => onContextMenu(e, name)}>
+              <div className="w-[200px] shrink-0 px-3 py-1.5 flex items-center gap-2" style={{ borderRight: "1px solid var(--border-default)" }}>
+                <ProjectIcon phosphorIcon={project.phosphorIcon} color={project.color} iconUrl={project.iconUrl} size="sm" />
+                <span className="truncate" style={{ color: "var(--text-primary)", fontSize: "12px", fontWeight: 500 }}>{project.shortName || name}</span>
+                {starred.has(name) && <Star className="w-3 h-3 shrink-0" weight="fill" style={{ color: "#F59145" }} />}
+              </div>
+              <div className="flex-1 relative min-w-[500px] h-full py-1.5 px-0.5">
+                <div className="absolute top-0 bottom-0 w-px z-10" style={{ left: `${todayPos}%`, background: "oklch(0.65 0.2 25 / 0.3)" }} />
+                <motion.div initial={{ scaleX: 0, opacity: 0 }} animate={{ scaleX: 1, opacity: 1 }} transition={{ delay: idx * 0.03, duration: 0.2 }}
+                  className="absolute h-6 rounded-[4px] flex items-center px-2 overflow-hidden"
+                  style={{ left: `${leftPct}%`, width: `${widthPct}%`, top: "50%", transform: "translateY(-50%)", transformOrigin: "left",
+                    background: pm ? pm.bgColor : "var(--neutral-100)", border: `1px solid ${pm ? pm.color + "30" : "var(--border-default)"}` }}>
+                  <span className="truncate" style={{ color: pm?.color || "var(--text-secondary)", fontSize: "10px", fontWeight: 600 }}>{pm?.label || project.productionPhase}</span>
+                </motion.div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

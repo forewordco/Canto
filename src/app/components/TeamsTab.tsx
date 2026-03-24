@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════
-   TEAMS TAB — Create & manage teams within a space.
-   Teams group people (members, clients, viewers) together.
+   GROUPS TAB — Create & manage groups within a space.
+   Groups are typed as "team" or "client" and contain people
+   who can be admin, member, or viewer.
    ═══════════════════════════════════════════════════════════ */
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, forwardRef } from "react";
 import {
   Plus,
   X,
@@ -18,17 +19,18 @@ import {
   MagnifyingGlass,
   CaretDown,
   CaretUp,
+  ShieldCheck,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useData } from "../lib/data";
 import { haptic } from "../lib/haptics";
 import { toast } from "sonner";
-import type { SpacePerson, SpaceTeam } from "../lib/types";
+import type { SpacePerson, SpaceGroup } from "../lib/types";
 import { AVATAR_COLORS } from "../lib/types";
 
 /* ─── Constants ─── */
 
-const TEAM_COLORS = [
+const GROUP_COLORS = [
   "#6366F1", "#8B5CF6", "#EC4899", "#F43F5E",
   "#F97316", "#EAB308", "#22C55E", "#14B8A6",
   "#06B6D4", "#3B82F6", "#6B7280", "#84CC16",
@@ -36,8 +38,8 @@ const TEAM_COLORS = [
 
 /* ─── Helpers ─── */
 
-function generateTeamId() {
-  return `team-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+function generateGroupId() {
+  return `group-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function getInitials(name: string): string {
@@ -66,44 +68,59 @@ function PersonAvatar({ person, size = 28, fontSize = 10 }: { person: SpacePerso
   );
 }
 
-function roleIcon(role: "member" | "client" | "viewer") {
+function roleIcon(role: "admin" | "member" | "viewer") {
   switch (role) {
+    case "admin": return ShieldCheck;
     case "member": return UsersThree;
-    case "client": return Briefcase;
     case "viewer": return Eye;
   }
 }
 
-function roleLabel(role: "member" | "client" | "viewer") {
+function roleLabel(role: "admin" | "member" | "viewer") {
   switch (role) {
+    case "admin": return "Admin";
     case "member": return "Member";
-    case "client": return "Client";
     case "viewer": return "Viewer";
   }
 }
 
+/* Group type helpers */
+const GROUP_TYPES: { value: "team" | "client"; label: string; icon: typeof UsersThree; description: string }[] = [
+  { value: "team", label: "Team", icon: UsersThree, description: "Internal team members" },
+  { value: "client", label: "Client", icon: Briefcase, description: "External client group" },
+];
+
+function groupTypeLabel(type: "team" | "client") {
+  return type === "team" ? "Team" : "Client";
+}
+
+function groupTypeIcon(type: "team" | "client") {
+  return type === "team" ? UsersThree : Briefcase;
+}
+
 /* ═══════════════════════════════════════════════════════════
-   TEAM CARD — expandable card for a single team
+   GROUP CARD — expandable card for a single group
    ═══════════════════════════════════════════════════════════ */
 
-function TeamCard({
-  team,
+const GroupCard = forwardRef<HTMLDivElement, {
+  group: SpaceGroup;
+  allPeople: { person: SpacePerson; role: "admin" | "member" | "viewer" }[];
+  spaceColor: string;
+  onUpdate: (groupId: string, updates: Partial<SpaceGroup>) => void;
+  onDelete: (groupId: string) => void;
+}>(function GroupCard({
+  group,
   allPeople,
   spaceColor,
   onUpdate,
   onDelete,
-}: {
-  team: SpaceTeam;
-  allPeople: { person: SpacePerson; role: "member" | "client" | "viewer" }[];
-  spaceColor: string;
-  onUpdate: (teamId: string, updates: Partial<SpaceTeam>) => void;
-  onDelete: (teamId: string) => void;
-}) {
+}, ref) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(team.name);
-  const [editDesc, setEditDesc] = useState(team.description || "");
-  const [editColor, setEditColor] = useState(team.color);
+  const [editName, setEditName] = useState(group.name);
+  const [editDesc, setEditDesc] = useState(group.description || "");
+  const [editColor, setEditColor] = useState(group.color);
+  const [editType, setEditType] = useState(group.type);
   const [showPeoplePicker, setShowPeoplePicker] = useState(false);
   const [search, setSearch] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
@@ -112,37 +129,40 @@ function TeamCard({
     if (editing) nameRef.current?.focus();
   }, [editing]);
 
-  const teamMembers = useMemo(() => {
-    return allPeople.filter((p) => team.personIds.includes(p.person.id));
-  }, [allPeople, team.personIds]);
+  const groupMembers = useMemo(() => {
+    return allPeople.filter((p) => group.personIds.includes(p.person.id));
+  }, [allPeople, group.personIds]);
 
   const availablePeople = useMemo(() => {
-    const existing = new Set(team.personIds);
+    const existing = new Set(group.personIds);
     return allPeople
       .filter((p) => !existing.has(p.person.id))
       .filter((p) => !search || p.person.name.toLowerCase().includes(search.toLowerCase()));
-  }, [allPeople, team.personIds, search]);
+  }, [allPeople, group.personIds, search]);
 
   const handleSaveEdit = () => {
     if (!editName.trim()) return;
-    onUpdate(team.id, { name: editName.trim(), description: editDesc.trim() || undefined, color: editColor });
+    onUpdate(group.id, { name: editName.trim(), description: editDesc.trim() || undefined, color: editColor, type: editType });
     setEditing(false);
     haptic("success");
-    toast.success("Team updated");
+    toast.success("Group updated");
   };
 
   const handleAddPerson = (personId: string) => {
-    onUpdate(team.id, { personIds: [...team.personIds, personId] });
+    onUpdate(group.id, { personIds: [...group.personIds, personId] });
     haptic("light");
   };
 
   const handleRemovePerson = (personId: string) => {
-    onUpdate(team.id, { personIds: team.personIds.filter((id) => id !== personId) });
+    onUpdate(group.id, { personIds: group.personIds.filter((id) => id !== personId) });
     haptic("light");
   };
 
+  const TypeIcon = groupTypeIcon(group.type);
+
   return (
     <motion.div
+      ref={ref}
       layout
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
@@ -157,31 +177,39 @@ function TeamCard({
       >
         <div
           className="w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0"
-          style={{ background: `color-mix(in oklch, ${team.color} 14%, transparent)` }}
+          style={{ background: `color-mix(in oklch, ${group.color} 14%, transparent)` }}
         >
-          <UsersFour size={18} weight="fill" style={{ color: team.color }} />
+          <TypeIcon size={18} weight="fill" style={{ color: group.color }} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>
-            {team.name}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-[14px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+              {group.name}
+            </p>
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] text-[10px] font-semibold shrink-0"
+              style={{ background: `color-mix(in oklch, ${group.color} 10%, transparent)`, color: group.color }}
+            >
+              {groupTypeLabel(group.type)}
+            </span>
+          </div>
           <p className="text-[11px]" style={{ color: "var(--text-quaternary)" }}>
-            {teamMembers.length} {teamMembers.length === 1 ? "person" : "people"}
-            {team.description ? ` · ${team.description}` : ""}
+            {groupMembers.length} {groupMembers.length === 1 ? "person" : "people"}
+            {group.description ? ` · ${group.description}` : ""}
           </p>
         </div>
 
         {/* Stacked avatars */}
         <div className="flex -space-x-1.5">
-          {teamMembers.slice(0, 4).map((m) => (
+          {groupMembers.slice(0, 4).map((m) => (
             <PersonAvatar key={m.person.id} person={m.person} size={24} fontSize={9} />
           ))}
-          {teamMembers.length > 4 && (
+          {groupMembers.length > 4 && (
             <div
               className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
               style={{ background: "var(--neutral-200)", color: "var(--text-tertiary)" }}
             >
-              +{teamMembers.length - 4}
+              +{groupMembers.length - 4}
             </div>
           )}
         </div>
@@ -212,7 +240,7 @@ function TeamCard({
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleSaveEdit(); if (e.key === "Escape") setEditing(false); }}
-                    placeholder="Team name"
+                    placeholder="Group name"
                     className="w-full bg-white/60 dark:bg-white/[0.04] outline-none px-2.5 py-2 rounded-[6px] border text-[13px]"
                     style={{ color: "var(--text-primary)", borderColor: "var(--border-default)" }}
                   />
@@ -224,9 +252,32 @@ function TeamCard({
                     className="w-full bg-white/60 dark:bg-white/[0.04] outline-none px-2.5 py-2 rounded-[6px] border text-[12px]"
                     style={{ color: "var(--text-primary)", borderColor: "var(--border-default)" }}
                   />
+                  {/* Group type picker */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium" style={{ color: "var(--text-quaternary)" }}>Type:</span>
+                    {GROUP_TYPES.map((gt) => {
+                      const GtIcon = gt.icon;
+                      const isActive = editType === gt.value;
+                      return (
+                        <button
+                          key={gt.value}
+                          onClick={() => setEditType(gt.value)}
+                          className="flex items-center gap-1 px-2 py-1 rounded-[5px] text-[11px] font-medium transition-colors"
+                          style={{
+                            background: isActive ? `color-mix(in oklch, ${editColor} 14%, transparent)` : "transparent",
+                            color: isActive ? editColor : "var(--text-tertiary)",
+                            border: isActive ? `1px solid ${editColor}` : "1px solid var(--border-default)",
+                          }}
+                        >
+                          <GtIcon size={12} weight={isActive ? "fill" : "regular"} />
+                          {gt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {/* Color picker */}
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {TEAM_COLORS.map((c) => (
+                    {GROUP_COLORS.map((c) => (
                       <button
                         key={c}
                         onClick={() => setEditColor(c)}
@@ -242,12 +293,12 @@ function TeamCard({
                       onClick={handleSaveEdit}
                       disabled={!editName.trim()}
                       className="px-3 py-1.5 rounded-[6px] text-white text-[12px] font-semibold disabled:opacity-40 hover:brightness-110 transition-all"
-                      style={{ background: team.color }}
+                      style={{ background: group.color }}
                     >
                       Save
                     </button>
                     <button
-                      onClick={() => { setEditing(false); setEditName(team.name); setEditDesc(team.description || ""); setEditColor(team.color); }}
+                      onClick={() => { setEditing(false); setEditName(group.name); setEditDesc(group.description || ""); setEditColor(group.color); setEditType(group.type); }}
                       className="px-3 py-1.5 rounded-[6px] text-[12px] font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
                       style={{ color: "var(--text-tertiary)" }}
                     >
@@ -267,7 +318,7 @@ function TeamCard({
                       <PencilSimple size={12} /> Edit
                     </button>
                     <button
-                      onClick={() => { onDelete(team.id); haptic("medium"); toast.success("Team deleted"); }}
+                      onClick={() => { onDelete(group.id); haptic("medium"); toast.success("Group deleted"); }}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-[6px] text-[12px] font-medium hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors"
                       style={{ color: "oklch(0.6 0.2 25)" }}
                     >
@@ -275,14 +326,14 @@ function TeamCard({
                     </button>
                   </div>
 
-                  {/* Team members list */}
+                  {/* Group members list */}
                   <div className="space-y-0.5">
-                    {teamMembers.length === 0 ? (
+                    {groupMembers.length === 0 ? (
                       <p className="text-[12px] py-3 text-center" style={{ color: "var(--text-quaternary)" }}>
-                        No people in this team yet
+                        No people in this group yet
                       </p>
                     ) : (
-                      teamMembers.map((m) => {
+                      groupMembers.map((m) => {
                         const RIcon = roleIcon(m.role);
                         return (
                           <div
@@ -301,7 +352,7 @@ function TeamCard({
                               onClick={() => handleRemovePerson(m.person.id)}
                               className="w-5 h-5 flex items-center justify-center rounded-[3px] opacity-0 group-hover:opacity-100 hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-all"
                               style={{ color: "var(--text-quaternary)" }}
-                              title="Remove from team"
+                              title="Remove from group"
                             >
                               <X size={10} />
                             </button>
@@ -321,7 +372,7 @@ function TeamCard({
                       <Plus size={12} /> Add people
                     </button>
                   ) : (
-                    <div className="rounded-[8px] border p-2.5 space-y-2" style={{ borderColor: `color-mix(in oklch, ${team.color} 25%, var(--border-default))`, background: `color-mix(in oklch, ${team.color} 3%, var(--surface-bg))` }}>
+                    <div className="rounded-[8px] border p-2.5 space-y-2" style={{ borderColor: `color-mix(in oklch, ${group.color} 25%, var(--border-default))`, background: `color-mix(in oklch, ${group.color} 3%, var(--surface-bg))` }}>
                       <div className="flex items-center gap-1.5 px-2 py-1 rounded-[5px] border" style={{ borderColor: "var(--border-default)" }}>
                         <MagnifyingGlass size={12} style={{ color: "var(--text-quaternary)" }} />
                         <input
@@ -355,7 +406,7 @@ function TeamCard({
                                   <RIcon size={10} />
                                   {roleLabel(p.role)}
                                 </span>
-                                <Plus size={12} style={{ color: team.color }} />
+                                <Plus size={12} style={{ color: group.color }} />
                               </button>
                             );
                           })
@@ -378,19 +429,21 @@ function TeamCard({
       </AnimatePresence>
     </motion.div>
   );
-}
+});
+GroupCard.displayName = "GroupCard";
 
 /* ═══════════════════════════════════════════════════════════
-   TEAMS TAB — main export
+   GROUPS TAB — main export
    ═══════════════════════════════════════════════════════════ */
 
-export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor: string }) {
+export function GroupsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor: string }) {
   const { spaces, updateSpace } = useData();
   const space = useMemo(() => spaces.find((s) => s.id === spaceId), [spaces, spaceId]);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
-  const [newColor, setNewColor] = useState(TEAM_COLORS[0]);
+  const [newColor, setNewColor] = useState(GROUP_COLORS[0]);
+  const [newType, setNewType] = useState<"team" | "client">("team");
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -399,45 +452,47 @@ export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor:
 
   if (!space) return null;
 
-  const teams = space.teams || [];
+  const groups = space.groups || [];
 
   // Collect all people from all roles
   const allPeople = useMemo(() => {
-    const result: { person: SpacePerson; role: "member" | "client" | "viewer" }[] = [];
+    const result: { person: SpacePerson; role: "admin" | "member" | "viewer" }[] = [];
+    (space.admins || []).forEach((p) => result.push({ person: p, role: "admin" }));
     (space.members || []).forEach((p) => result.push({ person: p, role: "member" }));
-    (space.clients || []).forEach((p) => result.push({ person: p, role: "client" }));
     (space.viewers || []).forEach((p) => result.push({ person: p, role: "viewer" }));
     return result;
-  }, [space.members, space.clients, space.viewers]);
+  }, [space.admins, space.members, space.viewers]);
 
   const handleCreate = () => {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    const newTeam: SpaceTeam = {
-      id: generateTeamId(),
+    const newGroup: SpaceGroup = {
+      id: generateGroupId(),
       name: trimmed,
       color: newColor,
+      type: newType,
       description: newDesc.trim() || undefined,
       personIds: [],
       createdAt: new Date().toISOString(),
     };
-    updateSpace(spaceId, { teams: [...teams, newTeam] });
+    updateSpace(spaceId, { groups: [...groups, newGroup] });
     haptic("success");
-    toast.success(`Created team "${trimmed}"`);
+    toast.success(`Created group "${trimmed}"`);
     setNewName("");
     setNewDesc("");
-    setNewColor(TEAM_COLORS[Math.floor(Math.random() * TEAM_COLORS.length)]);
+    setNewColor(GROUP_COLORS[Math.floor(Math.random() * GROUP_COLORS.length)]);
+    setNewType("team");
     setCreating(false);
   };
 
-  const handleUpdateTeam = useCallback((teamId: string, updates: Partial<SpaceTeam>) => {
-    const updated = teams.map((t) => t.id === teamId ? { ...t, ...updates } : t);
-    updateSpace(spaceId, { teams: updated });
-  }, [teams, spaceId, updateSpace]);
+  const handleUpdateGroup = useCallback((groupId: string, updates: Partial<SpaceGroup>) => {
+    const updated = groups.map((g) => g.id === groupId ? { ...g, ...updates } : g);
+    updateSpace(spaceId, { groups: updated });
+  }, [groups, spaceId, updateSpace]);
 
-  const handleDeleteTeam = useCallback((teamId: string) => {
-    updateSpace(spaceId, { teams: teams.filter((t) => t.id !== teamId) });
-  }, [teams, spaceId, updateSpace]);
+  const handleDeleteGroup = useCallback((groupId: string) => {
+    updateSpace(spaceId, { groups: groups.filter((g) => g.id !== groupId) });
+  }, [groups, spaceId, updateSpace]);
 
   return (
     <div className="space-y-4">
@@ -446,7 +501,7 @@ export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor:
         <div className="flex items-center gap-2">
           <UsersFour size={16} weight="fill" style={{ color: spaceColor }} />
           <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
-            {teams.length} {teams.length === 1 ? "team" : "teams"}
+            {groups.length} {groups.length === 1 ? "group" : "groups"}
           </p>
         </div>
       </div>
@@ -455,14 +510,14 @@ export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor:
       <div className="flex items-center gap-2 px-3 py-2 rounded-[8px]" style={{ background: `color-mix(in oklch, ${spaceColor} 4%, transparent)` }}>
         <UsersFour size={12} style={{ color: spaceColor, opacity: 0.6 }} />
         <p className="text-[12px]" style={{ color: "var(--text-quaternary)" }}>
-          Teams let you group members, clients, and viewers together for easier collaboration
+          Groups let you organize admins, members, and viewers into teams or client groups for easier collaboration
         </p>
       </div>
 
-      {/* Teams list */}
+      {/* Groups list */}
       <div className="space-y-2">
         <AnimatePresence mode="popLayout">
-          {teams.length === 0 && !creating && (
+          {groups.length === 0 && !creating && (
             <motion.div
               key="empty"
               initial={{ opacity: 0 }}
@@ -476,28 +531,28 @@ export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor:
                 <UsersFour size={28} weight="light" style={{ color: spaceColor, opacity: 0.5 }} />
               </div>
               <p className="text-[14px] font-medium" style={{ color: "var(--text-tertiary)" }}>
-                No teams yet
+                No groups yet
               </p>
               <p className="text-[12px] mt-1" style={{ color: "var(--text-quaternary)" }}>
-                Create a team to group people from this space
+                Create a group to organize people from this space
               </p>
             </motion.div>
           )}
 
-          {teams.map((team) => (
-            <TeamCard
-              key={team.id}
-              team={team}
+          {groups.map((group) => (
+            <GroupCard
+              key={group.id}
+              group={group}
               allPeople={allPeople}
               spaceColor={spaceColor}
-              onUpdate={handleUpdateTeam}
-              onDelete={handleDeleteTeam}
+              onUpdate={handleUpdateGroup}
+              onDelete={handleDeleteGroup}
             />
           ))}
         </AnimatePresence>
       </div>
 
-      {/* Create team */}
+      {/* Create group */}
       {!creating ? (
         <button
           onClick={() => { setCreating(true); haptic("light"); }}
@@ -510,7 +565,7 @@ export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor:
           >
             <Plus size={15} style={{ color: spaceColor }} />
           </div>
-          <span className="text-[13px] font-medium">Create team</span>
+          <span className="text-[13px] font-medium">Create group</span>
         </button>
       ) : (
         <motion.div
@@ -524,14 +579,14 @@ export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor:
         >
           <div className="flex items-center gap-2 mb-1">
             <UsersFour size={14} style={{ color: spaceColor }} />
-            <span className="text-[12px] font-semibold" style={{ color: spaceColor }}>New team</span>
+            <span className="text-[12px] font-semibold" style={{ color: spaceColor }}>New group</span>
           </div>
           <input
             ref={nameRef}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false); }}
-            placeholder="Team name"
+            placeholder="Group name"
             className="w-full bg-white/60 dark:bg-white/[0.04] outline-none px-2.5 py-2 rounded-[6px] border"
             style={{ fontSize: "13px", color: "var(--text-primary)", borderColor: "var(--border-default)" }}
           />
@@ -543,9 +598,32 @@ export function TeamsTab({ spaceId, spaceColor }: { spaceId: string; spaceColor:
             className="w-full bg-white/60 dark:bg-white/[0.04] outline-none px-2.5 py-2 rounded-[6px] border"
             style={{ fontSize: "12px", color: "var(--text-primary)", borderColor: "var(--border-default)" }}
           />
+          {/* Group type picker */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium" style={{ color: "var(--text-quaternary)" }}>Type:</span>
+            {GROUP_TYPES.map((gt) => {
+              const GtIcon = gt.icon;
+              const isActive = newType === gt.value;
+              return (
+                <button
+                  key={gt.value}
+                  onClick={() => setNewType(gt.value)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-[5px] text-[11px] font-medium transition-colors"
+                  style={{
+                    background: isActive ? `color-mix(in oklch, ${spaceColor} 14%, transparent)` : "transparent",
+                    color: isActive ? spaceColor : "var(--text-tertiary)",
+                    border: isActive ? `1px solid ${spaceColor}` : "1px solid var(--border-default)",
+                  }}
+                >
+                  <GtIcon size={12} weight={isActive ? "fill" : "regular"} />
+                  {gt.label}
+                </button>
+              );
+            })}
+          </div>
           {/* Color picker */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {TEAM_COLORS.map((c) => (
+            {GROUP_COLORS.map((c) => (
               <button
                 key={c}
                 onClick={() => setNewColor(c)}

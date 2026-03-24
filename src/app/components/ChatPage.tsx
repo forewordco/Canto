@@ -171,12 +171,17 @@ export function ChatPage({ panelMode = false }: { panelMode?: boolean }) {
   }, [safeTeam, profile, getUserInfo]);
 
   // Load conversations
-  const loadConversations = useCallback(async () => {
-    const { data, error } = await api.get<{ conversations: Conversation[] }>("/chat/conversations");
+  const loadConversations = useCallback(async (retryCount = 0) => {
+    const { data, error } = await api.get<{ conversations: Conversation[] }>("/chat/conversations", { timeout: 45000 });
     if (error) {
-      // Suppress transient cold-start and auth-init errors
+      // Suppress transient cold-start, auth-init, and timeout errors — retry silently
       const lower = error.toLowerCase();
-      if (!lower.includes("failed to fetch") && !lower.includes("auth")) {
+      const isTransient = lower.includes("failed to fetch") || lower.includes("auth") || lower.includes("timeout");
+      if (isTransient && retryCount < 2) {
+        setTimeout(() => loadConversations(retryCount + 1), 2000 * (retryCount + 1));
+        return;
+      }
+      if (!isTransient) {
         console.error("[Chat] Load conversations error:", error);
       }
       setLoading(false);

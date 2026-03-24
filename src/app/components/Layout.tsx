@@ -39,7 +39,7 @@ import {
   Briefcase,
   Check,
   Star,
-  Queue,
+  SkipForward,
   CalendarDots,
   Notepad,
   Timer,
@@ -179,6 +179,7 @@ const BuildPlan = lazyRetry(() => import("./brand-guide/BuildPlan"), "BuildPlan"
 const DocsPage = lazyRetry(() => import("./DocsPage"), "DocsPage");
 const CalendarPage = lazyRetry(() => import("./CalendarPage"), "CalendarPage");
 const WeekViewPage = lazyRetry(() => import("./WeekViewPage"), "WeekViewPage");
+const MyTasksPage = lazyRetry(() => import("./MyTasksPage"), "MyTasksPage");
 const InboxPage = lazyRetry(() => import("./InboxPage"), "InboxPage");
 const TeamPage = lazyRetry(() => import("./TeamPage"), "TeamPage");
 const ClientsListPage = lazyRetry(() => import("./ClientsListPage"), "ClientsListPage");
@@ -209,6 +210,7 @@ const sidebarNavGroups: NavItem[][] = [
   [
     { id: "home", label: "Home", icon: House },
     { id: "week", label: "This Week", icon: CalendarDots },
+    { id: "my-tasks", label: "My Tasks", icon: ListChecks },
     { id: "calendar", label: "Calendar", icon: CalendarBlank },
     { id: "inbox", label: "Inbox", icon: Bell },
   ],
@@ -355,7 +357,8 @@ function AppPage({ nav }: { nav: NavId }) {
     "clients-list": { title: "Clients", desc: "Client management with contacts, contracts, and satisfaction tracking.", icon: Binoculars, phase: "10" },
     team: { title: "Team", desc: "Team members, time tracking, and active timers.", icon: UsersThree, phase: "10" },
     settings: { title: "Settings", desc: "Profile, theme, integrations, and notification preferences.", icon: Gear, phase: "10" },
-    week: { title: "Week View", desc: "Weekly calendar with draggable time blocks.", icon: CalendarBlank, phase: "8" },
+    week: { title: "This Week", desc: "4-day time-blocking planner with drag-and-drop scheduling.", icon: CalendarDots, phase: "8" },
+    "my-tasks": { title: "My Tasks", desc: "All tasks assigned to you, grouped by project.", icon: ListChecks, phase: "4" },
     project: { title: "Project", desc: "Project detail view with tasks, messages, timeline, and files.", icon: SquareHalf, phase: "5" },
     client: { title: "Client", desc: "Client detail page.", icon: Binoculars, phase: "10" },
     search: { title: "Search", desc: "Search across projects, tasks, clients, docs, and team.", icon: MagnifyingGlass, phase: "2" },
@@ -417,6 +420,15 @@ function AppPage({ nav }: { nav: NavId }) {
       <ErrorBoundary section="Week View">
         <Suspense fallback={<CalendarSkeleton />}>
           <WeekViewPage />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+  if (nav === "my-tasks") {
+    return (
+      <ErrorBoundary section="My Tasks">
+        <Suspense fallback={<HomePageSkeleton />}>
+          <MyTasksPage />
         </Suspense>
       </ErrorBoundary>
     );
@@ -1637,7 +1649,8 @@ function SidebarNavContent({
   /* ─── Group 1: Today, Upcoming, Inbox ─── */
   const group1: NavItem[] = [
     { id: "home", label: "Today", icon: CalendarBlank },
-    { id: "calendar", label: "Upcoming", icon: CalendarDots },
+    { id: "week", label: "This Week", icon: CalendarDots },
+    { id: "my-tasks", label: "My Tasks", icon: ListChecks },
     { id: "inbox", label: "Inbox", icon: Bell },
   ];
 
@@ -1653,7 +1666,7 @@ function SidebarNavContent({
       {/* Group 1: Today, Upcoming, Inbox */}
       <ul className="space-y-0.5">
         {group1.map((item) => {
-          const isActive = activeNav === item.id || (item.id === "home" && activeNav === "week");
+          const isActive = activeNav === item.id;
           return (
             <li key={item.id}>
               <SidebarNavButton
@@ -1973,7 +1986,7 @@ export function Layout() {
   const isMoreActive = MORE_ITEMS.some((m) => m.id === activeNav && m.id !== "chat");
 
   // Is this a drill-down page (project detail, client detail, etc.)?
-  const isDrillDown = ["project", "client", "week", "space-detail"].includes(activeNav);
+  const isDrillDown = ["project", "client", "space-detail"].includes(activeNav);
 
   return (
     <DragProvider>

@@ -11,6 +11,7 @@
    =================================================================== */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   CalendarBlank,
@@ -42,8 +43,14 @@ import {
   UploadSimple,
   Spinner,
   Sun,
-  Queue,
+  SkipForward,
   SquareSplitVertical,
+  Diamond,
+  CheckSquare,
+  Square as SquareIcon,
+  SidebarSimple,
+  SquareSplitHorizontal,
+  AppWindow,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
 import type {
@@ -72,6 +79,28 @@ import { getPhosphorIcon } from "./PhosphorIconPicker";
 import { useNavigation } from "../lib/navigation";
 
 /* --- Status Config --- */
+
+/** Returns the correct icon for a task status, swapping to Diamond for milestones. */
+function getStatusIcon(status: TaskStatus, isMilestone: boolean): React.ElementType {
+  if (isMilestone) return Diamond;
+  const map: Record<TaskStatus, React.ElementType> = {
+    "todo": Circle,
+    "in-progress": CircleHalf,
+    "completed": CheckCircle,
+    "hold": PauseCircle,
+  };
+  return map[status] || Circle;
+}
+
+function getStatusWeight(status: TaskStatus, isMilestone: boolean): "regular" | "fill" | "duotone" {
+  if (isMilestone) {
+    if (status === "todo") return "regular";
+    if (status === "in-progress") return "duotone";
+    return "fill";
+  }
+  if (status === "completed" || status === "in-progress" || status === "hold") return "fill";
+  return "regular";
+}
 
 const STATUS_OPTIONS: {
   value: TaskStatus;
@@ -295,12 +324,27 @@ function InlineDropdown<T extends string>({
 
 /* === MORE ACTIONS MENU (header ... button) === */
 
+type TaskViewMode = "popup" | "sidebar" | "tray" | "fullscreen";
+
+const VIEW_MODE_OPTIONS: { value: TaskViewMode; label: string; icon: React.ElementType }[] = [
+  { value: "popup", label: "Popup", icon: AppWindow },
+  { value: "sidebar", label: "Right Sidebar", icon: SidebarSimple },
+  { value: "tray", label: "Bottom Tray", icon: SquareSplitHorizontal },
+  { value: "fullscreen", label: "Full Screen", icon: ArrowsOut },
+];
+
 function MoreActionsMenu({
   task,
   onDelete,
+  onToggleMilestone,
+  viewMode,
+  onViewModeChange,
 }: {
   task: TaskItem;
   onDelete?: () => void;
+  onToggleMilestone?: () => void;
+  viewMode: TaskViewMode;
+  onViewModeChange: (mode: TaskViewMode) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -329,6 +373,26 @@ function MoreActionsMenu({
             className="absolute top-full right-0 mt-1 py-1 rounded-[8px] z-50 min-w-[180px]"
             style={{ background: "var(--surface-bg)", border: "1px solid #e1e5eb", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}
           >
+            {/* View options */}
+            <div className="px-3 pt-1.5 pb-1" style={{ fontSize: "11px", fontWeight: 600, color: "#8a9099", textTransform: "uppercase", letterSpacing: "0.04em" }}>View</div>
+            {VIEW_MODE_OPTIONS.map((opt) => {
+              const Icon = opt.icon;
+              const isActive = viewMode === opt.value;
+              return (
+                <button key={opt.value} onClick={() => { onViewModeChange(opt.value); setOpen(false); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-black/[0.04]" style={{ fontSize: "13px", color: isActive ? "var(--accent-primary)" : "#5d646f", fontWeight: isActive ? 500 : 400 }}>
+                  <Icon className="w-3.5 h-3.5" weight={isActive ? "fill" : "regular"} />
+                  {opt.label}
+                  {isActive && <Check className="w-3 h-3 ml-auto" style={{ color: "var(--accent-primary)" }} />}
+                </button>
+              );
+            })}
+            <div className="h-px my-1" style={{ background: "#e8ebf1" }} />
+            {onToggleMilestone && (
+              <button onClick={() => { onToggleMilestone(); setOpen(false); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-black/[0.04]" style={{ fontSize: "13px", color: "#5d646f" }}>
+                <Diamond className="w-3.5 h-3.5" weight={task.milestone ? "regular" : "fill"} />
+                {task.milestone ? "Convert to Task" : "Convert to Milestone"}
+              </button>
+            )}
             {onDelete && (
               <button onClick={() => { onDelete(); setOpen(false); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-black/[0.04]" style={{ fontSize: "13px", color: "#FA6863" }}>
                 <Trash className="w-3.5 h-3.5" />
@@ -342,62 +406,186 @@ function MoreActionsMenu({
   );
 }
 
-/* === SUBTASK ROW === */
+/* === SUBTASK ROW (full-featured, square checkbox) === */
 
-function SubtaskRow({
+function DetailSubtaskRow({
   subtask,
+  teamMembers,
   onToggle,
   onDelete,
-  onTitleChange,
+  onSubtaskUpdate,
+  onClick,
 }: {
   subtask: SubTask;
+  teamMembers: { userId: string; displayName: string; avatarColor?: string; avatarUrl?: string }[];
   onToggle: () => void;
   onDelete: () => void;
-  onTitleChange: (title: string) => void;
+  onSubtaskUpdate: (updates: Partial<SubTask>) => void;
+  onClick: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [editVal, setEditVal] = useState(subtask.title);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dateInputValue, setDateInputValue] = useState("");
+  const dateBtnRef = useRef<HTMLButtonElement>(null);
+  const assigneeBtnRef = useRef<HTMLButtonElement>(null);
+  const datePortalRef = useRef<HTMLDivElement>(null);
+  const assigneePortalRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const [assigneePos, setAssigneePos] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
-    if (editing) { inputRef.current?.focus(); inputRef.current?.select(); }
-  }, [editing]);
+    if (!assigneeOpen && !datePickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (assigneeOpen && assigneePortalRef.current && !assigneePortalRef.current.contains(t) && assigneeBtnRef.current && !assigneeBtnRef.current.contains(t)) setAssigneeOpen(false);
+      if (datePickerOpen && datePortalRef.current && !datePortalRef.current.contains(t) && dateBtnRef.current && !dateBtnRef.current.contains(t)) setDatePickerOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [assigneeOpen, datePickerOpen]);
+
+  const assigneeMember = subtask.assignee ? teamMembers.find((m) => m.userId === subtask.assignee) : null;
+  const assigneeInitial = assigneeMember ? assigneeMember.displayName.charAt(0).toUpperCase() : null;
+  const assigneePhoto = assigneeMember?.avatarUrl || null;
 
   return (
-    <div className="flex items-center gap-2 group/sub" style={{ borderBottom: "1px solid #e8ebf1", padding: "7px 0" }}>
-      <button onClick={onToggle} className="shrink-0 p-0.5 rounded-full transition-transform active:scale-90">
+    <div
+      className="group/sub flex items-center gap-2 py-[5px] px-1 -mx-1 rounded-[4px] transition-colors hover:bg-black/[0.02] cursor-pointer"
+      style={{ borderBottom: "1px solid #e8ebf1" }}
+      onClick={onClick}
+    >
+      {/* Square checkbox */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        className="shrink-0 w-[18px] h-[18px] flex items-center justify-center"
+      >
         {subtask.completed ? (
-          <CheckCircle className="w-4 h-4" weight="fill" style={{ color: "#00AB93" }} />
+          <CheckSquare weight="fill" size={16} style={{ color: "#00AB93", opacity: 0.7 }} />
         ) : (
-          <Circle className="w-4 h-4" style={{ color: "#6159e1" }} />
+          <SquareIcon size={16} weight="regular" style={{ color: "#8a9099" }} />
         )}
       </button>
 
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={editVal}
-          onChange={(e) => setEditVal(e.target.value)}
-          onBlur={() => { if (editVal.trim() && editVal.trim() !== subtask.title) onTitleChange(editVal.trim()); setEditing(false); }}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); else if (e.key === "Escape") { setEditVal(subtask.title); setEditing(false); } }}
-          className="flex-1 bg-transparent outline-none min-w-0"
-          style={{ fontSize: "13px", color: "#343b45" }}
-        />
-      ) : (
-        <span
-          onClick={() => { if (!subtask.completed) { setEditVal(subtask.title); setEditing(true); } }}
-          className={`flex-1 min-w-0 truncate cursor-text ${subtask.completed ? "line-through" : ""}`}
-          style={{ fontSize: "13px", color: subtask.completed ? "#8a9099" : "#343b45" }}
-        >
-          {subtask.title}
-        </span>
-      )}
-
-      <button
-        onClick={onDelete}
-        className="shrink-0 p-1 rounded opacity-0 group-hover/sub:opacity-100 transition-opacity hover:bg-black/[0.04]"
-        style={{ color: "#8a9099" }}
+      {/* Title */}
+      <span
+        className="truncate flex-1 min-w-0"
+        style={{
+          color: subtask.completed ? "#8a9099" : "#343b45",
+          fontSize: "13px",
+          fontWeight: subtask.completed ? 400 : 450,
+          textDecoration: subtask.completed ? "line-through" : "none",
+        }}
       >
+        {subtask.title}
+      </span>
+
+      <div className="flex-1 min-w-0" />
+
+      {/* Date picker */}
+      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={dateBtnRef}
+          onClick={() => {
+            if (!datePickerOpen && dateBtnRef.current) {
+              const r = dateBtnRef.current.getBoundingClientRect();
+              setDropdownPos({ top: r.bottom + 4, left: r.right });
+            }
+            setDatePickerOpen(!datePickerOpen);
+            if (subtask.date) {
+              try { setDateInputValue(new Date(subtask.date).toISOString().split("T")[0]); } catch { setDateInputValue(""); }
+            } else {
+              setDateInputValue(new Date().toISOString().split("T")[0]);
+            }
+          }}
+          className="inline-flex items-center gap-1 px-1 py-0.5 rounded hover:bg-black/[0.05] transition-colors"
+          title={subtask.date ? "Change due date" : "Set due date"}
+        >
+          {subtask.date ? (
+            <span style={{ color: "#8a9099", fontSize: "11px" }}>{formatDateShort(subtask.date)}</span>
+          ) : (
+            <CalendarBlank size={12} style={{ color: "#c0c4cc" }} className="opacity-0 group-hover/sub:opacity-100 transition-opacity" />
+          )}
+        </button>
+        {datePickerOpen && createPortal(
+          <div
+            className="fixed z-[9999] p-2 rounded-[8px] min-w-[180px]"
+            style={{ top: dropdownPos.top, left: dropdownPos.left, transform: "translateX(-100%)", background: "#fff", border: "1px solid #e1e5eb", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}
+            ref={datePortalRef}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {[{ label: "Today", offset: 0 }, { label: "Tomorrow", offset: 1 }, { label: "Next Week", offset: 7 }].map((opt) => (
+              <button key={opt.label} onClick={() => { const d = new Date(); d.setDate(d.getDate() + opt.offset); d.setHours(12,0,0,0); onSubtaskUpdate({ date: d.toISOString() }); setDatePickerOpen(false); }} className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-black/[0.04]" style={{ fontSize: "12px", color: "#5d646f" }}>
+                <CalendarBlank size={13} style={{ color: "#8a9099" }} />{opt.label}
+              </button>
+            ))}
+            <div className="h-px my-1.5" style={{ background: "#e8ebf1" }} />
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={dateInputValue} onChange={(e) => setDateInputValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && dateInputValue) { onSubtaskUpdate({ date: dateInputValue + "T12:00:00.000Z" }); setDatePickerOpen(false); } }} className="flex-1 min-w-0 rounded px-2 py-1 text-xs outline-none" style={{ background: "#f9fafc", border: "1px solid #e1e5eb", color: "#11161f" }} autoFocus />
+              <button onClick={() => { if (dateInputValue) { onSubtaskUpdate({ date: dateInputValue + "T12:00:00.000Z" }); } setDatePickerOpen(false); }} className="p-1 rounded hover:bg-black/[0.04]" style={{ color: "#6159e1" }}><Check size={13} weight="bold" /></button>
+            </div>
+            {subtask.date && (<><div className="h-px my-1.5" style={{ background: "#e8ebf1" }} /><button onClick={() => { onSubtaskUpdate({ date: undefined }); setDatePickerOpen(false); }} className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-black/[0.04]" style={{ fontSize: "12px", color: "#FA6863" }}><X size={13} /> Remove date</button></>)}
+          </div>,
+          document.body
+        )}
+      </div>
+
+      {/* Today / Lineup */}
+      <div className="flex items-center gap-0.5 shrink-0">
+        <button onClick={(e) => { e.stopPropagation(); onSubtaskUpdate({ today: !subtask.today }); }} className="p-0.5 rounded hover:bg-black/[0.05] transition-colors" title={subtask.today ? "Remove from Today" : "Mark as Today"}>
+          <Sun size={12} weight={subtask.today ? "fill" : "regular"} style={{ color: subtask.today ? "#E5A000" : "#c0c4cc", opacity: subtask.today ? 0.9 : 0.5 }} className={subtask.today ? "" : "opacity-0 group-hover/sub:opacity-100 transition-opacity"} />
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); onSubtaskUpdate({ lineup: !subtask.lineup }); }} className="p-0.5 rounded hover:bg-black/[0.05] transition-colors" title={subtask.lineup ? "Remove from Lineup" : "Add to Lineup"}>
+          <SkipForward size={12} weight={subtask.lineup ? "fill" : "regular"} style={{ color: subtask.lineup ? "#6366F1" : "#c0c4cc", opacity: subtask.lineup ? 0.85 : 0.5 }} className={subtask.lineup ? "" : "opacity-0 group-hover/sub:opacity-100 transition-opacity"} />
+        </button>
+      </div>
+
+      {/* Assignee */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={assigneeBtnRef}
+          onClick={() => {
+            if (!assigneeOpen && assigneeBtnRef.current) {
+              const r = assigneeBtnRef.current.getBoundingClientRect();
+              setAssigneePos({ top: r.bottom + 4, left: r.right });
+            }
+            setAssigneeOpen(!assigneeOpen);
+          }}
+          className="w-[20px] h-[20px] rounded-full hover:ring-2 hover:ring-black/10 transition-shadow flex items-center justify-center shrink-0"
+          title={assigneeMember?.displayName || "Assign"}
+        >
+          {assigneePhoto ? (
+            <ImageWithFallback src={assigneePhoto} alt={assigneeMember?.displayName || ""} className="w-full h-full rounded-full object-cover" />
+          ) : assigneeInitial ? (
+            <div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: `color-mix(in oklch, ${assigneeMember?.avatarColor || "#fa6863"} 15%, transparent)`, color: assigneeMember?.avatarColor || "#fa6863", fontSize: "9px", fontWeight: 600 }}>{assigneeInitial}</div>
+          ) : (
+            <div className="w-full h-full rounded-full flex items-center justify-center" style={{ border: "1.5px dashed #d4d8e0" }}><UserCircle size={11} style={{ color: "#c0c4cc" }} /></div>
+          )}
+        </button>
+        {assigneeOpen && createPortal(
+          <div ref={assigneePortalRef} className="fixed z-[9999] py-1 rounded-[8px] min-w-[180px]" style={{ top: assigneePos.top, left: assigneePos.left, transform: "translateX(-100%)", background: "#fff", border: "1px solid #e1e5eb", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+            <button onClick={() => { onSubtaskUpdate({ assignee: undefined }); setAssigneeOpen(false); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-black/[0.04]" style={{ fontSize: "13px", color: !subtask.assignee ? "var(--accent-primary)" : "#5d646f" }}>
+              <UserCircle className="w-4 h-4" style={{ color: "#8a9099" }} /> Unassigned
+              {!subtask.assignee && <Check className="w-3 h-3 ml-auto" style={{ color: "var(--accent-primary)" }} />}
+            </button>
+            {teamMembers.map((m) => {
+              const isActive = subtask.assignee === m.userId;
+              const ini = m.displayName.split(/\s+/).map((p) => p[0]).join("").toUpperCase().slice(0, 2);
+              return (
+                <button key={m.userId} onClick={() => { onSubtaskUpdate({ assignee: m.userId }); setAssigneeOpen(false); }} className="flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-black/[0.04]" style={{ fontSize: "13px", fontWeight: isActive ? 500 : 400, color: isActive ? "var(--accent-primary)" : "#5d646f" }}>
+                  {m.avatarUrl ? (<div className="w-5 h-5 rounded-full overflow-hidden shrink-0" style={{ background: m.avatarColor || "#fa6863" }}><ImageWithFallback src={m.avatarUrl} alt={m.displayName} className="w-full h-full object-cover" /></div>) : (<div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ background: m.avatarColor || "#fa6863" }}><span style={{ color: "white", fontSize: "8px", fontWeight: 600 }}>{ini}</span></div>)}
+                  {m.displayName}
+                  {isActive && <Check className="w-3 h-3 ml-auto" style={{ color: "var(--accent-primary)" }} />}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
+      </div>
+
+      {/* Delete */}
+      <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="shrink-0 p-1 rounded opacity-0 group-hover/sub:opacity-100 transition-opacity hover:bg-black/[0.04]" style={{ color: "#8a9099" }}>
         <Trash className="w-3 h-3" />
       </button>
     </div>
@@ -432,7 +620,7 @@ export function TaskDetailPane({
   const [showAddSubtask, setShowAddSubtask] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
+  const [viewMode, setViewMode] = useState<TaskViewMode>("popup");
   const subtaskInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const subtasksSectionRef = useRef<HTMLDivElement>(null);
@@ -510,6 +698,34 @@ export function TaskDetailPane({
     const updated = (task.subtasks || []).map((s) => s.id === subtaskId ? { ...s, title } : s);
     onUpdate(task.id, { subtasks: updated });
   }, [task.id, task.subtasks, onUpdate]);
+
+  const handleSubtaskFieldUpdate = useCallback((subtaskId: string, updates: Partial<SubTask>) => {
+    const updated = (task.subtasks || []).map((s) => s.id === subtaskId ? { ...s, ...updates } : s);
+    onUpdate(task.id, { subtasks: updated });
+  }, [task.id, task.subtasks, onUpdate]);
+
+  // Subtask click opens it as a task-like detail (converts to TaskItem)
+  const [openSubtaskId, setOpenSubtaskId] = useState<string | null>(null);
+  const openSubtaskAsTask = useMemo((): TaskItem | null => {
+    if (!openSubtaskId) return null;
+    const sub = (task.subtasks || []).find((s) => s.id === openSubtaskId);
+    if (!sub) return null;
+    return {
+      id: sub.id,
+      title: sub.title,
+      completed: sub.completed,
+      status: sub.status || (sub.completed ? "completed" : "todo"),
+      date: sub.date,
+      startDate: sub.startDate,
+      assignee: sub.assignee,
+      content: sub.content || "",
+      descriptionBlocks: sub.descriptionBlocks,
+      attachments: sub.attachments || [],
+      comments: sub.comments || [],
+      subtasks: [],
+      createdAt: task.createdAt,
+    } as TaskItem;
+  }, [openSubtaskId, task.subtasks, task.createdAt]);
 
   const statusConfig = STATUS_OPTIONS.find((s) => s.value === task.status)!;
   const StatusIcon = statusConfig.icon;
@@ -612,7 +828,6 @@ export function TaskDetailPane({
           </button>
           <button onClick={() => fileInputRef.current?.click()} className="p-1.5 rounded-[6px] hover:bg-black/[0.04]" title="Attach"><Paperclip className="w-4 h-4" style={{ color: "#8a9099" }} /></button>
           <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/?project=${encodeURIComponent(projectName)}&task=${encodeURIComponent(task.id)}`).then(() => toast.success("Link copied")).catch(() => toast.error("Failed")); }} className="p-1.5 rounded-[6px] hover:bg-black/[0.04]" title="Copy link"><LinkSimple className="w-4 h-4" style={{ color: "#8a9099" }} /></button>
-          <button onClick={() => setFullscreen((f) => !f)} className="p-1.5 rounded-[6px] hover:bg-black/[0.04]" title={fullscreen ? "Exit full screen" : "Full screen"}><ArrowsOut className="w-4 h-4" style={{ color: fullscreen ? "var(--accent-primary)" : "#8a9099" }} /></button>
           {onToggleToday && (
             <button onClick={() => onToggleToday(task.id)} className="p-1.5 rounded-[6px] hover:bg-black/[0.04]" title={isToday ? "Remove from Today" : "Add to Today"}>
               <Sun className="w-4 h-4" weight={isToday ? "fill" : "regular"} style={{ color: isToday ? "#E5A000" : "#8a9099" }} />
@@ -620,10 +835,12 @@ export function TaskDetailPane({
           )}
           {onToggleLineup && (
             <button onClick={() => onToggleLineup(task.id)} className="p-1.5 rounded-[6px] hover:bg-black/[0.04]" title={isLineup ? "Remove from Lineup" : "Add to Lineup"}>
-              <Queue className="w-4 h-4" weight={isLineup ? "fill" : "regular"} style={{ color: isLineup ? "#6366F1" : "#8a9099" }} />
+              <SkipForward className="w-4 h-4" weight={isLineup ? "fill" : "regular"} style={{ color: isLineup ? "#6366F1" : "#8a9099" }} />
             </button>
           )}
-          <MoreActionsMenu task={task} onDelete={onDelete ? () => { onDelete(task.id); onClose(); } : undefined} />
+          <MoreActionsMenu task={task} onDelete={onDelete ? () => { onDelete(task.id); onClose(); } : undefined} onToggleMilestone={() => { onUpdate(task.id, { milestone: !task.milestone }); toast.success(task.milestone ? "Converted to task" : "Converted to milestone"); }} viewMode={viewMode} onViewModeChange={setViewMode} />
+          <div className="w-px h-4 mx-0.5" style={{ background: "#e1e5eb" }} />
+          <button onClick={onClose} className="p-1.5 rounded-[6px] hover:bg-black/[0.04]" title="Close"><X className="w-4 h-4" style={{ color: "#8a9099" }} /></button>
         </div>
       </div>
 
@@ -641,21 +858,21 @@ export function TaskDetailPane({
                   onChange={(val) => onUpdate(task.id, { status: val, completed: val === "completed" })}
                   renderValue={(val) => {
                     const cfg = STATUS_OPTIONS.find((s) => s.value === val)!;
-                    const Icon = cfg.icon;
+                    const Icon = getStatusIcon(cfg.value, task.milestone);
                     const isSubtle = val !== "completed";
                     return (
                       <span className="inline-flex items-center gap-1 rounded-[8px] pl-[8px] pr-[12px] py-[4px]" style={{ background: isSubtle ? `color-mix(in oklch, ${cfg.color} 12%, transparent)` : cfg.color, border: `1.5px solid ${isSubtle ? `color-mix(in oklch, ${cfg.color} 40%, transparent)` : cfg.color}` }}>
-                        <Icon className="w-[18px] h-[18px]" weight={val === "completed" || val === "in-progress" || val === "hold" ? "fill" : "regular"} style={{ color: isSubtle ? cfg.color : "white" }} />
+                        <Icon className="w-[18px] h-[18px]" weight={getStatusWeight(val, task.milestone)} style={{ color: isSubtle ? cfg.color : "white" }} />
                         <span style={{ fontSize: "14px", fontWeight: 600, color: isSubtle ? cfg.color : "white" }}>{cfg.label}</span>
                       </span>
                     );
                   }}
                   renderOption={(opt, isActive) => {
                     const cfg = STATUS_OPTIONS.find((s) => s.value === opt.value)!;
-                    const Icon = cfg.icon;
+                    const Icon = getStatusIcon(cfg.value, task.milestone);
                     return (
                       <>
-                        <Icon className="w-4 h-4" weight={opt.value === "completed" || opt.value === "in-progress" || opt.value === "hold" ? "fill" : "regular"} style={{ color: cfg.color }} />
+                        <Icon className="w-4 h-4" weight={getStatusWeight(opt.value, task.milestone)} style={{ color: cfg.color }} />
                         <span style={{ color: isActive ? cfg.color : "#5d646f" }}>{opt.label}</span>
                         {isActive && <Check className="w-3 h-3 ml-auto" style={{ color: cfg.color }} />}
                       </>
@@ -701,15 +918,20 @@ export function TaskDetailPane({
                 </div>
               )}
               <div>
-                {(task.subtasks || []).map((sub) => {
-                  const subMember = teamMembers.find((m) => m.userId === sub.assignee);
-                  return (
-                    <SubtaskRow key={sub.id} subtask={sub} onToggle={() => handleToggleSubtask(sub.id)} onDelete={() => handleDeleteSubtask(sub.id)} onTitleChange={(title) => handleSubtaskTitleChange(sub.id, title)} />
-                  );
-                })}
+                {(task.subtasks || []).map((sub) => (
+                  <DetailSubtaskRow
+                    key={sub.id}
+                    subtask={sub}
+                    teamMembers={teamMembers}
+                    onToggle={() => handleToggleSubtask(sub.id)}
+                    onDelete={() => handleDeleteSubtask(sub.id)}
+                    onSubtaskUpdate={(updates) => handleSubtaskFieldUpdate(sub.id, updates)}
+                    onClick={() => setOpenSubtaskId(sub.id)}
+                  />
+                ))}
                 {showAddSubtask && (
                   <div className="flex items-center gap-2 py-2">
-                    <Circle className="w-4 h-4 shrink-0" style={{ color: "#8a9099" }} />
+                    <SquareIcon size={16} style={{ color: "#8a9099" }} />
                     <input ref={subtaskInputRef} value={newSubtask} onChange={(e) => setNewSubtask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAddSubtask(); else if (e.key === "Escape") { setShowAddSubtask(false); setNewSubtask(""); } }} onBlur={() => { if (newSubtask.trim()) handleAddSubtask(); setShowAddSubtask(false); }} placeholder="Add a subtask..." className="flex-1 bg-transparent outline-none" style={{ fontSize: "13px", color: "#343b45" }} />
                   </div>
                 )}
@@ -876,27 +1098,109 @@ export function TaskDetailPane({
   );
 
   /* ── Mobile: vaul bottom sheet ── */
+  /* Nested subtask detail pane (shared between mobile & desktop) */
+  const nestedSubtaskPane = (
+    <AnimatePresence>
+      {openSubtaskAsTask && (
+        <TaskDetailPane
+          key={`sub-${openSubtaskId}`}
+          task={openSubtaskAsTask}
+          projectName={projectName}
+          projectColor={projectColor}
+          projectIcon={projectIcon}
+          projectShortName={projectShortName}
+          open={!!openSubtaskAsTask}
+          onClose={() => setOpenSubtaskId(null)}
+          onUpdate={(_id, updates) => { if (openSubtaskId) handleSubtaskFieldUpdate(openSubtaskId, updates as Partial<SubTask>); }}
+          teamMembers={teamMembers}
+          allTasks={allTasks}
+        />
+      )}
+    </AnimatePresence>
+  );
+
   if (isMobile) {
     return (
-      <VaulDrawer.Root open={open} onOpenChange={(v) => !v && onClose()}>
-        <VaulDrawer.Portal>
-          <VaulDrawer.Overlay className="fixed inset-0 z-50 bg-black/40" style={{ backdropFilter: "blur(2px)" }} />
-          <VaulDrawer.Content className="fixed z-50 inset-x-0 bottom-0 flex flex-col rounded-t-[16px] overflow-hidden" style={{ background: "var(--surface-bg)", maxHeight: "95vh", paddingBottom: "env(safe-area-inset-bottom, 0px)" }} role="dialog" aria-label={`Task details: ${task.title}`} aria-modal="true">
-            <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full" style={{ background: "var(--neutral-300)" }} /></div>
-            {panelInner}
-          </VaulDrawer.Content>
-        </VaulDrawer.Portal>
-      </VaulDrawer.Root>
+      <>
+        <VaulDrawer.Root open={open} onOpenChange={(v) => !v && onClose()}>
+          <VaulDrawer.Portal>
+            <VaulDrawer.Overlay className="fixed inset-0 z-50 bg-black/40" style={{ backdropFilter: "blur(2px)" }} />
+            <VaulDrawer.Content className="fixed z-50 inset-x-0 bottom-0 flex flex-col rounded-t-[16px] overflow-hidden" style={{ background: "var(--surface-bg)", maxHeight: "95vh", paddingBottom: "env(safe-area-inset-bottom, 0px)" }} role="dialog" aria-label={`Task details: ${task.title}`} aria-modal="true">
+              <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full" style={{ background: "var(--neutral-300)" }} /></div>
+              {panelInner}
+            </VaulDrawer.Content>
+          </VaulDrawer.Portal>
+        </VaulDrawer.Root>
+        {nestedSubtaskPane}
+      </>
     );
   }
 
-  /* ── Desktop: centered popup modal ── */
+  /* ── Desktop: view-mode-aware rendering ── */
+
+  /* Fullscreen */
+  if (viewMode === "fullscreen") {
+    return (
+      <>
+        <motion.div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} aria-hidden="true" />
+        <motion.div className="fixed inset-0 z-50 pointer-events-none">
+          <motion.div
+            className="pointer-events-auto flex flex-col w-full h-full overflow-hidden"
+            style={{ background: "var(--surface-bg)" }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }} role="dialog" aria-label={`Task details: ${task.title}`} aria-modal="true"
+          >
+            {panelInner}
+          </motion.div>
+        </motion.div>
+        {nestedSubtaskPane}
+      </>
+    );
+  }
+
+  /* Right Sidebar */
+  if (viewMode === "sidebar") {
+    return (
+      <>
+        <motion.div className="fixed inset-0 z-50 bg-black/15 backdrop-blur-[1px]" style={{ right: rightPanelOffset }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} aria-hidden="true" />
+        <motion.div
+          className="fixed z-50 top-0 bottom-0 right-0 flex flex-col overflow-hidden"
+          style={{ width: "min(560px, 45vw)", background: "var(--surface-bg)", borderLeft: "1px solid #e1e5eb", boxShadow: "-8px 0 30px rgba(0,0,0,0.08)", right: rightPanelOffset }}
+          initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 40 }}
+          transition={{ type: "spring", damping: 28, stiffness: 400 }} role="dialog" aria-label={`Task details: ${task.title}`} aria-modal="true"
+        >
+          {panelInner}
+        </motion.div>
+        {nestedSubtaskPane}
+      </>
+    );
+  }
+
+  /* Bottom Tray */
+  if (viewMode === "tray") {
+    return (
+      <>
+        <motion.div className="fixed inset-0 z-50 bg-black/15 backdrop-blur-[1px]" style={{ right: rightPanelOffset }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} aria-hidden="true" />
+        <motion.div
+          className="fixed z-50 bottom-0 left-0 flex flex-col overflow-hidden rounded-t-[10px]"
+          style={{ right: rightPanelOffset, height: "min(520px, 55vh)", background: "var(--surface-bg)", borderTop: "1px solid #e1e5eb", boxShadow: "0 -8px 30px rgba(0,0,0,0.08)" }}
+          initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }}
+          transition={{ type: "spring", damping: 28, stiffness: 400 }} role="dialog" aria-label={`Task details: ${task.title}`} aria-modal="true"
+        >
+          {panelInner}
+        </motion.div>
+        {nestedSubtaskPane}
+      </>
+    );
+  }
+
+  /* Default: Popup (centered, larger) */
   return (
     <>
       <motion.div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]" style={{ right: rightPanelOffset }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} aria-hidden="true" />
       <motion.div className="fixed z-50 inset-0 flex items-center justify-center pointer-events-none" style={{ right: rightPanelOffset }}>
         <motion.div
-          className={`pointer-events-auto flex flex-col rounded-[6px] overflow-hidden ${fullscreen ? "w-full h-full" : "w-[944px] max-w-[95vw] h-[730px] max-h-[90vh]"}`}
+          className="pointer-events-auto flex flex-col rounded-[6px] overflow-hidden w-[1060px] max-w-[95vw] h-[800px] max-h-[92vh]"
           style={{ background: "var(--surface-bg)", border: "1px solid #e1e5eb", boxShadow: "0 25px 60px rgba(0,0,0,0.12), 0 8px 20px rgba(0,0,0,0.08)" }}
           initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12 }}
           transition={{ type: "spring", damping: 28, stiffness: 400 }} role="dialog" aria-label={`Task details: ${task.title}`} aria-modal="true"
@@ -904,6 +1208,7 @@ export function TaskDetailPane({
           {panelInner}
         </motion.div>
       </motion.div>
+      {nestedSubtaskPane}
     </>
   );
 }

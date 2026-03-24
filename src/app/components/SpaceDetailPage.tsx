@@ -38,6 +38,7 @@ import {
   PencilSimple,
   CheckCircle,
   CircleNotch,
+  ShieldCheck,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useData } from "../lib/data";
@@ -51,7 +52,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import type { SpacePerson, SpacePersonRole, SpaceMemberRole, ProjectData, WorkspaceDoc } from "../lib/types";
 import { AVATAR_COLORS } from "../lib/types";
-import { TeamsTab } from "./TeamsTab";
+import { GroupsTab } from "./TeamsTab";
 import { getIntegrationStatus, type IntegrationStatus } from "../lib/integrations";
 import {
   FrameIoDialog,
@@ -87,7 +88,7 @@ function formatRelativeDate(dateStr: string): string {
 
 /* ─── Tab definitions ─── */
 
-type TabId = "overview" | "assets" | "projects" | "docs" | "pinned" | "teams" | "people" | "integrations";
+type TabId = "overview" | "assets" | "projects" | "docs" | "pinned" | "groups" | "people" | "integrations";
 
 const TABS: { id: TabId; label: string; icon: typeof SquareHalf }[] = [
   { id: "overview", label: "Overview", icon: ChartBar },
@@ -95,7 +96,7 @@ const TABS: { id: TabId; label: string; icon: typeof SquareHalf }[] = [
   { id: "projects", label: "Projects", icon: SquareHalf },
   { id: "docs", label: "Docs", icon: Notebook },
   { id: "pinned", label: "Pinned", icon: PushPin },
-  { id: "teams", label: "Teams", icon: UsersFour },
+  { id: "groups", label: "Groups", icon: UsersFour },
   { id: "people", label: "People", icon: UsersThree },
   { id: "integrations", label: "Integrations", icon: Plugs },
 ];
@@ -110,8 +111,8 @@ const ROLE_TABS: {
   description: string;
   color: string;
 }[] = [
-  { role: "member", label: "Members", singularLabel: "member", icon: UsersThree, description: "Members can be Super Admin, Admin, or Member — each with different permissions", color: "oklch(0.65 0.16 250)" },
-  { role: "client", label: "Clients", singularLabel: "client", icon: Briefcase, description: "Can view deliverables and leave comments", color: "oklch(0.7 0.15 155)" },
+  { role: "admin", label: "Admins", singularLabel: "admin", icon: ShieldCheck, description: "Admin-level access with elevated permissions", color: "oklch(0.7 0.15 155)" },
+  { role: "member", label: "Members", singularLabel: "member", icon: UsersThree, description: "Standard access to projects, tasks, and docs", color: "oklch(0.65 0.16 250)" },
   { role: "viewer", label: "Viewers", singularLabel: "viewer", icon: Eye, description: "View-only access to space content", color: "oklch(0.65 0.12 290)" },
 ];
 
@@ -707,7 +708,7 @@ function PersonAvatar({ person, size = 32, fontSize = 11 }: { person: SpacePerso
 function PeopleTab({ spaceId, spaceColor, myRole, currentUserId, inviterName, spaceName }: { spaceId: string; spaceColor: string; myRole: SpaceMemberRole | null; currentUserId?: string; inviterName?: string; spaceName?: string }) {
   const { spaces, updateSpace } = useData();
   const space = useMemo(() => spaces.find((s) => s.id === spaceId), [spaces, spaceId]);
-  const [activeRole, setActiveRole] = useState<SpacePersonRole>("member");
+  const [activeRole, setActiveRole] = useState<SpacePersonRole>("admin");
   const [addingFirstName, setAddingFirstName] = useState("");
   const [addingLastName, setAddingLastName] = useState("");
   const [addingEmail, setAddingEmail] = useState("");
@@ -737,13 +738,13 @@ function PeopleTab({ spaceId, spaceColor, myRole, currentUserId, inviterName, sp
 
   const getPeople = (role: SpacePersonRole): SpacePerson[] => {
     switch (role) {
+      case "admin": return space.admins || [];
       case "member": return space.members || [];
-      case "client": return space.clients || [];
       case "viewer": return space.viewers || [];
     }
   };
 
-  const roleKey = (role: SpacePersonRole) => role === "member" ? "members" : role === "client" ? "clients" : "viewers";
+  const roleKey = (role: SpacePersonRole) => role === "admin" ? "admins" : role === "member" ? "members" : "viewers";
 
   const handleAdd = async () => {
     const first = addingFirstName.trim();
@@ -846,7 +847,7 @@ function PeopleTab({ spaceId, spaceColor, myRole, currentUserId, inviterName, sp
 
   const people = getPeople(activeRole);
   const activeConfig = ROLE_TABS.find((t) => t.role === activeRole)!;
-  const totalPeople = (space.members?.length || 0) + (space.clients?.length || 0) + (space.viewers?.length || 0);
+  const totalPeople = (space.admins?.length || 0) + (space.members?.length || 0) + (space.viewers?.length || 0);
 
   return (
     <div className="space-y-4">
@@ -1385,7 +1386,7 @@ export function SpaceDetailPage() {
   }, [docs, space]);
 
   const totalPeople = space
-    ? (space.members?.length || 0) + (space.clients?.length || 0) + (space.viewers?.length || 0)
+    ? (space.admins?.length || 0) + (space.members?.length || 0) + (space.viewers?.length || 0)
     : 0;
 
   const handleNavigateProject = useCallback(
@@ -1420,7 +1421,7 @@ export function SpaceDetailPage() {
   const tabBadges: Partial<Record<TabId, number>> = {
     projects: spaceProjects.length,
     docs: spaceDocs.length,
-    teams: space.teams?.length || 0,
+    groups: space.groups?.length || 0,
     people: totalPeople,
   };
 
@@ -1595,7 +1596,7 @@ export function SpaceDetailPage() {
               onNavigateProject={handleNavigateProject}
             />
           )}
-          {activeTab === "teams" && <TeamsTab spaceId={space.id} spaceColor={space.color} />}
+          {activeTab === "groups" && <GroupsTab spaceId={space.id} spaceColor={space.color} />}
           {activeTab === "people" && <PeopleTab spaceId={space.id} spaceColor={space.color} myRole={myRole} currentUserId={user?.id} inviterName={profile?.displayName || user?.user_metadata?.name || "A teammate"} spaceName={space.name} />}
           {activeTab === "integrations" && (
             <IntegrationsTab spaceId={space.id} spaceName={space.name} spaceColor={space.color} />

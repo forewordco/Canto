@@ -31,7 +31,7 @@ import {
   ArrowsClockwise,
   UserCircle,
   DotsThree,
-  Queue,
+  SkipForward,
   CaretDown,
   DotsSixVertical,
 } from "@phosphor-icons/react";
@@ -677,10 +677,10 @@ function AssigneeAvatar({
             setSearch("");
             setPickerOpen(!pickerOpen);
           }}
-          className="shrink-0 p-1 rounded-[4px] opacity-0 group-hover/row:opacity-100 transition-opacity"
+          className="shrink-0 rounded-[4px] opacity-0 group-hover/row:opacity-100 transition-opacity"
           title="Assign"
         >
-          <UserCircle className="w-3.5 h-3.5" style={{ color: "oklch(0.85 0.01 260)" }} />
+          <UserCircle className="w-5 h-5" style={{ color: "oklch(0.85 0.01 260)" }} />
         </button>
       )}
 
@@ -1161,7 +1161,7 @@ export const TaskRow = memo(function TaskRow({
                 }}
                 title={isLineup ? "Remove from Lineup" : "Add to Lineup"}
               >
-                <Queue className="w-3.5 h-3.5" weight={isLineup ? "fill" : "regular"} />
+                <SkipForward className="w-3.5 h-3.5" weight={isLineup ? "fill" : "regular"} />
               </button>
             )}
           </div>
@@ -1309,7 +1309,7 @@ export const TaskRow = memo(function TaskRow({
               className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors hover:bg-black/[0.04]"
               style={{ fontSize: "13px", color: isLineup ? "#3B82F6" : "var(--text-secondary)" }}
             >
-              <Queue className="w-4 h-4" weight={isLineup ? "fill" : "regular"} style={isLineup ? { color: "#3B82F6" } : undefined} />
+              <SkipForward className="w-4 h-4" weight={isLineup ? "fill" : "regular"} style={isLineup ? { color: "#3B82F6" } : undefined} />
               {isLineup ? "Remove from Lineup" : "Add to Lineup"}
             </button>
 
@@ -1392,7 +1392,7 @@ export const TaskRow = memo(function TaskRow({
                 className="flex items-center gap-3 w-full px-5 py-3 text-left active:bg-black/[0.04]"
                 style={{ fontSize: "15px", color: isLineup ? "#3B82F6" : "var(--text-primary)", minHeight: "48px" }}
               >
-                <Queue className="w-5 h-5" weight={isLineup ? "fill" : "regular"} style={isLineup ? { color: "#3B82F6" } : undefined} />
+                <SkipForward className="w-5 h-5" weight={isLineup ? "fill" : "regular"} style={isLineup ? { color: "#3B82F6" } : undefined} />
                 {isLineup ? "Remove from Lineup" : "Add to Lineup"}
               </button>
 

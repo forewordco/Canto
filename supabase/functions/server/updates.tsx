@@ -12,15 +12,12 @@ import { Hono } from "npm:hono@4.6.20";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-let _supabase: ReturnType<typeof createClient> | null = null;
-function supabase() {
-  if (!_supabase) {
-    _supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-  }
-  return _supabase;
+/** Create a fresh Supabase client per call to avoid stale TCP connections causing "connection reset" */
+function freshSupabase() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
 }
 
 /** Custom error for transient network failures */
@@ -35,11 +32,11 @@ class TransientAuthError extends Error {
 async function getUser(c: any): Promise<{ id: string; email: string } | null> {
   const token = c.req.header("X-User-Token");
   if (!token) return null;
-  const maxRetries = 3;
+  const maxRetries = 4;
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const { data: { user }, error } = await supabase().auth.getUser(token);
+      const { data: { user }, error } = await freshSupabase().auth.getUser(token);
       if (error || !user) return null;
       return { id: user.id, email: user.email || "" };
     } catch (err) {
@@ -49,10 +46,11 @@ async function getUser(c: any): Promise<{ id: string; email: string } | null> {
         String(err).includes("connection error") ||
         String(err).includes("ECONNRESET") ||
         String(err).includes("SendRequest") ||
-        String(err).includes("tcp connect error");
+        String(err).includes("tcp connect error") ||
+        String(err).includes("broken pipe");
       if (isTransient && attempt < maxRetries - 1) {
         console.log(`[Updates] getUser transient error (attempt ${attempt + 1}/${maxRetries}), retrying: ${err}`);
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 300 * Math.pow(2, attempt)));
         continue;
       }
       if (isTransient) {
@@ -158,7 +156,7 @@ export function registerUpdatesRoutes(app: Hono, PREFIX: string) {
         allUpdateIds.push(...globalIds);
 
         // Get all space update indices
-        const db = supabase();
+        const db = freshSupabase();
         const { data: spaceRows } = await db
           .from("kv_store_a038f2e0")
           .select("key, value")
@@ -220,7 +218,7 @@ export function registerUpdatesRoutes(app: Hono, PREFIX: string) {
       const globalIds: string[] = (await kv.get("updates:global")) || [];
       allUpdateIds.push(...globalIds);
 
-      const db = supabase();
+      const db = freshSupabase();
       const { data: spaceRows } = await db
         .from("kv_store_a038f2e0")
         .select("key, value")

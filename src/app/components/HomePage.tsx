@@ -27,9 +27,8 @@ import {
   VideoCamera,
   FilmScript,
   X,
-  SlidersHorizontal,
   Gear,
-  Queue,
+  SkipForward,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
 import { useData, useTodayTasks, useLineupTasks, useUpcomingTasks, useOverdueTasks, useAllTasks, useTodayDocs, useLineupDocs } from "../lib/data";
@@ -969,42 +968,6 @@ export function HomePage() {
     });
   }, [allTasks]);
 
-  // "My Tasks" — all incomplete tasks assigned to current user or unassigned
-  const myTasks = useMemo(() => {
-    const userId = profile?.userId;
-    return allTasks.filter((t) => {
-      if (t.completed) return false;
-      // Show tasks assigned to me or unassigned
-      if (userId && t.assignee && t.assignee !== userId) return false;
-      return true;
-    });
-  }, [allTasks, profile?.userId]);
-
-  // My completed tasks
-  const myCompletedTasks = useMemo(() => {
-    const userId = profile?.userId;
-    return allTasks.filter((t) => {
-      if (!t.completed) return false;
-      if (userId && t.assignee && t.assignee !== userId) return false;
-      return true;
-    });
-  }, [allTasks, profile?.userId]);
-
-  // Group my tasks by project
-  const myTasksByProject = useMemo(() => {
-    const groups: Record<string, (TaskItem & { projectName: string })[]> = {};
-    const order: string[] = [];
-    for (const task of myTasks) {
-      const pName = (task as any).projectName || "Personal";
-      if (!groups[pName]) {
-        groups[pName] = [];
-        order.push(pName);
-      }
-      groups[pName].push(task as TaskItem & { projectName: string });
-    }
-    return order.map((name) => ({ name, tasks: groups[name] }));
-  }, [myTasks]);
-
   // In-progress count
   const inProgressCount = useMemo(
     () => allTasks.filter((t) => !t.completed && t.status === "in-progress").length,
@@ -1429,7 +1392,7 @@ export function HomePage() {
           <Card>
             <CardHeader
               title="Lineup"
-              icon={Queue}
+              icon={SkipForward}
               iconColor="#3B82F6"
               count={lineupTasks.length + lineupDocs.length}
               badgeBg="#EFF6FF"
@@ -1476,135 +1439,6 @@ export function HomePage() {
             )}
           </Card>
         </div>
-
-        {/* ── My Tasks — Full width ── */}
-        <Card className="mb-4">
-          <div className="flex items-center gap-2 px-4 py-3">
-            <SlidersHorizontal
-              className="w-[18px] h-[18px] shrink-0"
-              weight="fill"
-              style={{ color: "var(--text-tertiary)" }}
-            />
-            <h3
-              style={{
-                color: "var(--text-primary)",
-                fontSize: "16px",
-                fontWeight: 700,
-                letterSpacing: "-0.01em",
-              }}
-            >
-              My Tasks
-            </h3>
-            <span
-              className="inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full"
-              style={{
-                background: "oklch(0.92 0.06 155)",
-                color: "oklch(0.40 0.12 155)",
-                fontSize: "11px",
-                fontWeight: 700,
-              }}
-            >
-              {myTasks.length}
-            </span>
-            <div className="ml-auto flex items-center gap-1">
-              <button
-                className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04]"
-                style={{ color: "var(--text-quaternary)" }}
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-              </button>
-              <button
-                className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04]"
-                style={{ color: "var(--text-quaternary)" }}
-              >
-                <CaretDown className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {myTasks.length > 0 ? (
-            <div className="px-2 pb-2">
-              {myTasksByProject.map((group) => (
-                <div key={group.name}>
-                  {/* Project section label */}
-                  <div className="flex items-center gap-2 px-2 pt-2 pb-1">
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{
-                        background: projects[group.name]?.color || "var(--neutral-400)",
-                      }}
-                    />
-                    <span
-                      style={{
-                        color: "var(--text-tertiary)",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {displayProjectName(group.name)}
-                    </span>
-                  </div>
-                  <HomeTaskList
-                    tasks={group.tasks}
-                    onToggleComplete={handleToggleComplete}
-                    onToggleToday={(id) => toggleToday(id)}
-                    onToggleLineup={handleToggleLineup}
-                    onStatusChange={handleStatusChange}
-                    onTitleChange={handleTitleChange}
-                    onPriorityChange={handlePriorityChange}
-                    onDateChange={handleDateChange}
-                    onAssigneeChange={handleAssigneeChange}
-                    onDelete={handleDelete}
-                    todayIds={todayTaskIds}
-                    lineupIds={lineupIds}
-                    projectColors={projectColorsFlat}
-                    onClickTask={handleClickTask}
-                    teamMembers={teamMembersList}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyCardState message="No tasks assigned to you" />
-          )}
-
-          {/* Show completed toggle */}
-          {myCompletedTasks.length > 0 && (
-            <div className="border-t" style={{ borderColor: "oklch(0.92 0.01 160 / 0.5)" }}>
-              <button
-                onClick={() => setShowCompletedMyTasks(!showCompletedMyTasks)}
-                className="w-full py-3 text-center transition-colors hover:bg-black/[0.02]"
-                style={{
-                  color: "var(--text-quaternary)",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                }}
-              >
-                {showCompletedMyTasks ? "Hide" : "Show"} {myCompletedTasks.length} completed task{myCompletedTasks.length !== 1 ? "s" : ""}
-              </button>
-              {showCompletedMyTasks && (
-                <div className="px-2 pb-2">
-                  <HomeTaskList
-                    tasks={myCompletedTasks}
-                    showProject
-                    onToggleComplete={handleToggleComplete}
-                    onStatusChange={handleStatusChange}
-                    onTitleChange={handleTitleChange}
-                    onPriorityChange={handlePriorityChange}
-                    onDateChange={handleDateChange}
-                    onAssigneeChange={handleAssigneeChange}
-                    onDelete={handleDelete}
-                    todayIds={todayTaskIds}
-                    lineupIds={lineupIds}
-                    projectColors={projectColorsFlat}
-                    onClickTask={handleClickTask}
-                    teamMembers={teamMembersList}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
 
         {/* ── Upcoming section ── */}
         {upcomingTasks.length > 0 && (

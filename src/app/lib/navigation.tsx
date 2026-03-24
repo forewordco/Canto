@@ -9,6 +9,7 @@ export type NavId =
   // App pages
   | "home"
   | "week"
+  | "my-tasks"
   | "calendar"
   | "inbox"
   | "updates"

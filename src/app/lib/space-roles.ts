@@ -22,6 +22,10 @@ export function getUserSpaceRole(space: Space, userId: string | undefined): Spac
   // Creator is always super-admin regardless of members list
   if (space.creatorId === userId) return "super-admin";
 
+  // Check admins list for a matching userId
+  const admin = (space.admins || []).find((m) => m.userId === userId);
+  if (admin) return admin.memberRole || "admin";
+
   // Check members list for a matching userId
   const member = (space.members || []).find((m) => m.userId === userId);
   if (member) return member.memberRole || "member";

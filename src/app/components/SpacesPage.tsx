@@ -244,7 +244,7 @@ const SpaceCard = forwardRef<HTMLDivElement, SpaceCardProps>(function SpaceCard(
     ? getPhosphorIcon(space.phosphorIcon) || CirclesFour
     : CirclesFour;
 
-  const totalPeople = (space.members?.length || 0) + (space.clients?.length || 0) + (space.viewers?.length || 0);
+  const totalPeople = (space.admins?.length || 0) + (space.members?.length || 0) + (space.viewers?.length || 0);
 
   return (
     <motion.div

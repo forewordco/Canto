@@ -165,59 +165,60 @@ function DesktopDialog({
               style={{
                 maxWidth: desktopMaxWidth,
                 maxHeight: "80vh",
-                background: "var(--surface-bg)",
-                border: "1px solid var(--border-default)",
               }}
               initial={{ scale: 0.95, y: 10 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 10 }}
               transition={{ type: "spring", damping: 28, stiffness: 350 }}
             >
-              {/* Header */}
-              {(title || !hideClose) && (
-                <div
-                  className="flex items-center justify-between px-5 py-3.5 border-b shrink-0"
-                  style={{ borderColor: "var(--border-default)" }}
-                >
-                  <div className="flex-1 min-w-0">
-                    {title && (
-                      <h2
-                        className="font-semibold truncate"
-                        style={{
-                          color: "var(--text-primary)",
-                          fontSize: "15px",
-                        }}
+              {/* Wrapper div for oklch-safe CSS variable styles */}
+              <div className="flex flex-col overflow-hidden rounded-[12px]" style={{ background: "var(--surface-bg)", border: "1px solid var(--border-default)" }}>
+                {/* Header */}
+                {(title || !hideClose) && (
+                  <div
+                    className="flex items-center justify-between px-5 py-3.5 border-b shrink-0"
+                    style={{ borderColor: "var(--border-default)" }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      {title && (
+                        <h2
+                          className="font-semibold truncate"
+                          style={{
+                            color: "var(--text-primary)",
+                            fontSize: "15px",
+                          }}
+                        >
+                          {title}
+                        </h2>
+                      )}
+                      {description && (
+                        <p
+                          className="mt-0.5 truncate"
+                          style={{
+                            color: "var(--text-tertiary)",
+                            fontSize: "13px",
+                          }}
+                        >
+                          {description}
+                        </p>
+                      )}
+                    </div>
+                    {!hideClose && (
+                      <button
+                        onClick={onClose}
+                        className="p-1.5 rounded-[6px] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors shrink-0"
+                        style={{ color: "var(--text-tertiary)" }}
                       >
-                        {title}
-                      </h2>
-                    )}
-                    {description && (
-                      <p
-                        className="mt-0.5 truncate"
-                        style={{
-                          color: "var(--text-tertiary)",
-                          fontSize: "13px",
-                        }}
-                      >
-                        {description}
-                      </p>
+                        <X className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
-                  {!hideClose && (
-                    <button
-                      onClick={onClose}
-                      className="p-1.5 rounded-[6px] hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition-colors shrink-0"
-                      style={{ color: "var(--text-tertiary)" }}
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
 
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto px-5 py-4">
-                {children}
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto px-5 py-4">
+                  {children}
+                </div>
               </div>
             </motion.div>
           </motion.div>

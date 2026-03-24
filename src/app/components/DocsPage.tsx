@@ -38,7 +38,7 @@ import {
   ClipboardText,
   Pencil,
   ListDashes,
-  Queue,
+  SkipForward,
   Briefcase,
   CheckCircle,
   ListChecks,
@@ -55,10 +55,10 @@ import {
   Keyboard,
   UploadSimple,
   ChatCircleDots,
-  Lock as LockIcon,
-  LockOpen,
   ArrowsOut,
   Target,
+  Link as LinkPhIcon,
+  ChartBar,
 } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "motion/react";
 import { useData, useAllTasks, useVisibleDocs } from "../lib/data";
@@ -108,6 +108,15 @@ import {
   WordGoalPopover,
   WordGoalBar,
 } from "./docs/DocD6Features";
+import {
+  TemplateGalleryModal,
+  BacklinksPanel,
+  ExportPanel,
+  DocStatsPanel,
+  CommandPalette,
+  useCommandPalette,
+  type CommandItem,
+} from "./docs/DocD7Features";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useNavigation } from "../lib/navigation";
@@ -174,6 +183,7 @@ export function DocsPage() {
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("updated");
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ docId: string; x: number; y: number } | null>(null);
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
@@ -248,7 +258,7 @@ export function DocsPage() {
     });
 
     return result;
-  }, [visibleDocs, activeFolderId, typeFilter, statusFilter, searchQuery, sortBy, isStarred]);
+  }, [visibleDocs, activeFolderId, typeFilter, statusFilter, searchQuery, sortBy, isStarred, recentlyViewed.recent]);
 
   /* ─── Folder Helpers ─── */
   const rootFolders = useMemo(
@@ -556,6 +566,15 @@ export function DocsPage() {
             <span className="hidden sm:inline">Import</span>
           </button>
           <button
+            onClick={() => setShowTemplateGallery(true)}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg transition-colors hover:bg-black/[0.04]"
+            style={{ color: "var(--text-secondary)", fontSize: "13px", fontWeight: 500, border: "1px solid var(--border-default)" }}
+            title="Template Gallery"
+          >
+            <FileText className="w-4 h-4" />
+            <span className="hidden sm:inline">Templates</span>
+          </button>
+          <button
             onClick={() => setCreateModalOpen(true)}
             className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-white transition-opacity hover:opacity-90"
             style={{ background: "#FA6863", fontSize: "13px", fontWeight: 600 }}
@@ -564,6 +583,34 @@ export function DocsPage() {
             <span className="hidden sm:inline">New Doc</span>
           </button>
         </div>
+      </div>
+
+      {/* Status Filter Chips (D6: added "Recent") */}
+      <div className="flex items-center gap-1.5 flex-wrap mt-1 mb-3">
+        {([
+          { key: "all", label: "All" },
+          { key: "recent", label: "Recent" },
+          { key: "favorited", label: "Favorites" },
+          { key: "pinned", label: "Pinned" },
+          { key: "today", label: "Today" },
+          { key: "lineup", label: "Lineup" },
+          { key: "private", label: "Private" },
+        ] as { key: StatusFilter; label: string }[]).map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setStatusFilter(f.key)}
+            className="px-2.5 py-1 rounded-full transition-colors"
+            style={{
+              fontSize: "12px",
+              fontWeight: statusFilter === f.key ? 600 : 400,
+              color: statusFilter === f.key ? "white" : "var(--text-secondary)",
+              background: statusFilter === f.key ? "#FA6863" : "var(--neutral-50)",
+              border: `1px solid ${statusFilter === f.key ? "#FA6863" : "var(--border-default)"}`,
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {/* Favorites section */}
@@ -812,7 +859,7 @@ export function DocsPage() {
                 },
                 {
                   label: doc?.lineup ? "Remove from Lineup" : "Add to Lineup",
-                  icon: Queue,
+                  icon: SkipForward,
                   action: () => { updateDoc(contextMenu.docId, { lineup: !doc?.lineup }); setContextMenu(null); },
                 },
                 {
@@ -881,6 +928,19 @@ export function DocsPage() {
             activeFolderId={activeFolderId}
           />
         )}
+      </AnimatePresence>
+
+      {/* Template Gallery (D7) */}
+      <AnimatePresence>
+        <TemplateGalleryModal
+          open={showTemplateGallery}
+          onSelect={(template) => {
+            handleCreateDoc(template.type, template.label, undefined, undefined, template.blocks);
+            setShowTemplateGallery(false);
+            toast.success(`Created "${template.label}" from template`);
+          }}
+          onClose={() => setShowTemplateGallery(false)}
+        />
       </AnimatePresence>
 
       {/* Import from Markdown Modal (D5) */}
@@ -997,7 +1057,7 @@ function DocCard({
               className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-[4px] backdrop-blur-sm"
               style={{ background: "rgba(59, 130, 246, 0.85)" }}
             >
-              <Queue className="w-2.5 h-2.5 text-white" weight="fill" />
+              <SkipForward className="w-2.5 h-2.5 text-white" weight="fill" />
             </div>
           )}
         </div>
@@ -1025,7 +1085,7 @@ function DocCard({
               }}
               title={doc.lineup ? "Remove from Lineup" : "Add to Lineup"}
             >
-              <Queue className="w-3 h-3 text-white" weight={doc.lineup ? "fill" : "regular"} />
+              <SkipForward className="w-3 h-3 text-white" weight={doc.lineup ? "fill" : "regular"} />
             </button>
           )}
         </div>
@@ -1146,6 +1206,11 @@ function DocumentEditor({
   const [commentPopover, setCommentPopover] = useState<{ blockId: string; top: number; left: number } | null>(null);
   const [showWordGoalPopover, setShowWordGoalPopover] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  // ── D7 state ──
+  const [showBacklinks, setShowBacklinks] = useState(false);
+  const [showExportPanel, setShowExportPanel] = useState(false);
+  const [showDocStats, setShowDocStats] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const prevBlocksRef = useRef<DocBlock[]>(doc.blocks || []);
   const isRemoteUpdateRef = useRef(false);
@@ -1163,6 +1228,39 @@ function DocumentEditor({
   const wordGoal = useWordGoal(doc.id);
   const blocks = doc.blocks || [];
   const wordCount = useMemo(() => blocks.reduce((acc, b) => acc + (b.content?.split(/\s+/).filter(Boolean).length || 0), 0), [blocks]);
+
+  // ── D7: Command Palette keyboard shortcut ──
+  useCommandPalette(showCommandPalette, setShowCommandPalette);
+
+  // ── D7: Build command list ──
+  const commandItems: CommandItem[] = useMemo(() => {
+    const cmds: CommandItem[] = [];
+    // Document actions
+    cmds.push({ id: "undo", label: "Undo", icon: ArrowCounterClockwise, section: "Edit", action: () => { const b = history.undo(); if (b) { prevBlocksRef.current = b; onBlocksChange(b); } }, keywords: ["undo"] });
+    cmds.push({ id: "redo", label: "Redo", icon: ArrowClockwise, section: "Edit", action: () => { const b = history.redo(); if (b) { prevBlocksRef.current = b; onBlocksChange(b); } }, keywords: ["redo"] });
+    cmds.push({ id: "find", label: "Find & Replace", icon: MagnifyingGlass, section: "Edit", action: () => setShowFindReplace(true), keywords: ["search", "find", "replace"] });
+    cmds.push({ id: "focus", label: "Focus Mode", icon: ArrowsOut, section: "View", action: () => setFocusMode(true), keywords: ["zen", "distraction"] });
+    cmds.push({ id: "fullwidth", label: fullWidth ? "Normal Width" : "Full Width", icon: fullWidth ? ArrowsInSimple : ArrowsOutSimple, section: "View", action: () => setFullWidth(!fullWidth), keywords: ["width", "wide", "narrow"] });
+    cmds.push({ id: "outline", label: "Toggle Outline", icon: ListDashes, section: "View", action: () => setShowOutline(!showOutline), keywords: ["outline", "toc", "headings"] });
+    cmds.push({ id: "format", label: "Format Panel", icon: SquareHalf, section: "View", action: () => { setShowFormatPanel(!showFormatPanel); setShowBlocksPanel(false); }, keywords: ["format", "style"] });
+    cmds.push({ id: "blocks", label: "Blocks Panel", icon: SkipForward, section: "View", action: () => { setShowBlocksPanel(!showBlocksPanel); setShowFormatPanel(false); }, keywords: ["blocks", "add"] });
+    cmds.push({ id: "export-md", label: "Export Markdown", icon: Export, section: "Export", action: () => { downloadMarkdown(doc.title || "Untitled", doc.blocks || []); toast.success("Exported to Markdown"); }, keywords: ["markdown", "download"] });
+    cmds.push({ id: "export-panel", label: "Export Options", icon: Export, section: "Export", action: () => setShowExportPanel(true), keywords: ["html", "pdf", "print", "export"] });
+    cmds.push({ id: "comments", label: "Comments Panel", icon: ChatCircleDots, section: "Collaboration", action: () => setShowCommentsPanel(!showCommentsPanel), keywords: ["comments", "discuss"] });
+    cmds.push({ id: "lock", label: docLock.locked ? "Unlock Document" : "Lock Document", icon: docLock.locked ? LockOpen : Lock, section: "Collaboration", action: docLock.toggle, keywords: ["lock", "unlock", "protect"] });
+    cmds.push({ id: "versions", label: "Version History", icon: ClockCounterClockwise, section: "History", action: () => setShowVersionHistory(!showVersionHistory), keywords: ["version", "history", "snapshot"] });
+    cmds.push({ id: "backlinks", label: "Backlinks", icon: LinkPhIcon, section: "References", action: () => setShowBacklinks(!showBacklinks), keywords: ["backlinks", "references", "linked"] });
+    cmds.push({ id: "stats", label: "Document Stats", icon: ChartBar, section: "Analyze", action: () => setShowDocStats(!showDocStats), keywords: ["stats", "analytics", "words", "readability"] });
+    cmds.push({ id: "shortcuts", label: "Keyboard Shortcuts", icon: Keyboard, section: "Help", action: () => setShowKeyboardShortcuts(true), keywords: ["keyboard", "shortcuts", "help"] });
+    // Navigate to other docs
+    if (allDocs) {
+      for (const d of allDocs.slice(0, 20)) {
+        if (d.id === doc.id) continue;
+        cmds.push({ id: `nav-${d.id}`, label: d.title || "Untitled", description: d.type, icon: FileText, iconColor: DOC_TYPE_META[d.type]?.color, section: "Documents", action: () => onNavigateDoc?.(d.id), keywords: [d.type] });
+      }
+    }
+    return cmds;
+  }, [doc, history, fullWidth, showOutline, showFormatPanel, showBlocksPanel, showCommentsPanel, showVersionHistory, showBacklinks, showDocStats, docLock, allDocs]);
 
   const allTasks = useAllTasks();
   const { user, profile } = useAuth();
@@ -1679,7 +1777,7 @@ function DocumentEditor({
             style={{ color: doc.lineup ? "#3B82F6" : "var(--text-quaternary)" }}
             title={doc.lineup ? "Remove from Lineup" : "Add to Lineup"}
           >
-            <Queue className="w-3.5 h-3.5" weight={doc.lineup ? "fill" : "regular"} />
+            <SkipForward className="w-3.5 h-3.5" weight={doc.lineup ? "fill" : "regular"} />
           </button>
 
           {/* Divider */}
@@ -2174,15 +2272,26 @@ function DocumentEditor({
             <MagnifyingGlass className="w-4 h-4" />
           </button>
 
-          {/* Export Markdown (D4) */}
-          <button
-            onClick={() => { downloadMarkdown(doc.title || "Untitled", doc.blocks || []); toast.success("Exported to Markdown"); }}
-            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-            style={{ color: "var(--text-quaternary)" }}
-            title="Export as Markdown"
-          >
-            <Export className="w-4 h-4" />
-          </button>
+          {/* Export Options (D4→D7) */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportPanel(!showExportPanel)}
+              className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+              style={{ color: showExportPanel ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+              title="Export Options"
+            >
+              <Export className="w-4 h-4" />
+            </button>
+            <AnimatePresence>
+              {showExportPanel && (
+                <ExportPanel
+                  docTitle={doc.title || "Untitled"}
+                  blocks={doc.blocks || []}
+                  onClose={() => setShowExportPanel(false)}
+                />
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Version History (D5) */}
           <button
@@ -2229,7 +2338,7 @@ function DocumentEditor({
             style={{ color: docLock.locked ? "oklch(0.65 0.14 55)" : "var(--text-quaternary)" }}
             title={docLock.locked ? "Unlock Document" : "Lock Document"}
           >
-            {docLock.locked ? <LockIcon className="w-4 h-4" weight="fill" /> : <LockOpen className="w-4 h-4" />}
+            {docLock.locked ? <Lock className="w-4 h-4" weight="fill" /> : <LockOpen className="w-4 h-4" />}
           </button>
 
           {/* Focus Mode (D6) */}
@@ -2262,6 +2371,26 @@ function DocumentEditor({
               )}
             </AnimatePresence>
           </div>
+
+          {/* Backlinks (D7) */}
+          <button
+            onClick={() => setShowBacklinks(!showBacklinks)}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: showBacklinks ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+            title="Backlinks"
+          >
+            <LinkPhIcon className="w-4 h-4" />
+          </button>
+
+          {/* Stats (D7) */}
+          <button
+            onClick={() => setShowDocStats(!showDocStats)}
+            className="p-1.5 rounded-[6px] transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+            style={{ color: showDocStats ? "var(--accent-primary)" : "var(--text-quaternary)" }}
+            title="Document Stats"
+          >
+            <ChartBar className="w-4 h-4" />
+          </button>
 
           {/* Divider */}
           <div className="w-px h-4" style={{ background: "var(--border-default)" }} />
@@ -2563,6 +2692,7 @@ function DocumentEditor({
           onChange={(blocks) => { handleBlocksChangeWithBroadcast(blocks); }}
           placeholder="Start typing or press '/' for commands..."
           autoFocus
+          readOnly={docLock.locked}
           scriptMode={doc.type === "script"}
           knownCharacters={doc.type === "script" ? scriptKnownCharacters : undefined}
           knownLocations={doc.type === "script" ? scriptKnownLocations : undefined}
@@ -2886,6 +3016,39 @@ function DocumentEditor({
             readOnly={docLock.locked}
           />
         </FocusModeOverlay>
+      )}
+    </AnimatePresence>
+
+    {/* Backlinks Panel (D7) */}
+    <AnimatePresence>
+      {showBacklinks && (
+        <BacklinksPanel
+          docId={doc.id}
+          allDocs={allDocs || []}
+          onNavigateDoc={onNavigateDoc}
+          onClose={() => setShowBacklinks(false)}
+        />
+      )}
+    </AnimatePresence>
+
+    {/* Document Stats Panel (D7) */}
+    <AnimatePresence>
+      {showDocStats && (
+        <DocStatsPanel
+          blocks={doc.blocks || []}
+          onClose={() => setShowDocStats(false)}
+        />
+      )}
+    </AnimatePresence>
+
+    {/* Command Palette (D7) */}
+    <AnimatePresence>
+      {showCommandPalette && (
+        <CommandPalette
+          open={showCommandPalette}
+          commands={commandItems}
+          onClose={() => setShowCommandPalette(false)}
+        />
       )}
     </AnimatePresence>
     </div>
@@ -3252,7 +3415,7 @@ function CreateDocModal({
 
 /* ═══════════════════════════════════════════════════════════
    CONTEXT MENU POPUP
-   ═══════════════════════════════════════════════════════════ */
+   ════════════════════════��══════════════════════════════════ */
 
 interface CtxMenuItem {
   label: string;

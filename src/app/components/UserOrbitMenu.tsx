@@ -51,8 +51,6 @@ function OrbitAvatar({
           width: avatarSize,
           height: avatarSize,
           background: profile?.avatarColor || "#8B5CF6",
-          boxShadow: "0 1px 4px oklch(0 0 0 / 0.08)",
-          border: "2px solid var(--neutral-200)",
         }}
       >
         {(profile?.avatarUrl || !profile?.displayName) ? (

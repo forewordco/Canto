@@ -56,7 +56,7 @@ async function getAuthUser(c: any): Promise<{ id: string; email: string } | null
   const token = c.req.header("X-User-Token");
   if (!token) return null;
 
-  const maxRetries = 3;
+  const maxRetries = 4;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const supabase = createClient(
@@ -85,7 +85,7 @@ async function getAuthUser(c: any): Promise<{ id: string; email: string } | null
         errStr.includes("broken pipe");
       if (isTransient && attempt < maxRetries - 1) {
         console.log(`[Auth] getAuthUser transient error (attempt ${attempt + 1}/${maxRetries}), retrying: ${err}`);
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        await new Promise((r) => setTimeout(r, 300 * Math.pow(2, attempt)));
         continue;
       }
       if (isTransient) {
@@ -2406,4 +2406,28 @@ app.all("*", (c) => {
   return c.json({ error: `Route not found: ${c.req.method} ${c.req.path}` }, 404);
 });
 
-Deno.serve(app.fetch);
+Deno.serve(async (req: Request) => {
+  try {
+    return await app.fetch(req);
+  } catch (err) {
+    // Suppress "connection closed before message completed" — the client
+    // disconnected before we finished writing the response.  This is
+    // normal for preflight requests, aborted fetches, and browser
+    // navigations; there is nothing actionable on the server side.
+    const msg = String(err?.message ?? err).toLowerCase();
+    if (
+      msg.includes("connection closed before message completed") ||
+      msg.includes("connection closed") ||
+      msg.includes("http: connection error") ||
+      msg.includes("broken pipe")
+    ) {
+      console.log(`[Server] Client disconnected early (suppressed): ${msg}`);
+      return new Response(null, { status: 499 });
+    }
+    console.log(`[Server] Unexpected fetch-level error: ${err}`);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+});
